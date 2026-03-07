@@ -6,7 +6,8 @@ import { STAT_DESCRIPTIONS, totalXpForLevel, xpRequiredForLevel } from '@/models
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
@@ -15,9 +16,19 @@ export default function CharacterScreen() {
   useGameHydration();
   const user = useGameStore((s) => s.user);
   const getEffectiveStat = useGameStore((s) => s.getEffectiveStat);
+  const getTotalMissionXp = useGameStore((s) => s.getTotalMissionXp);
+  const refreshUser = useGameStore((s) => s.refreshUser);
   const _lastAction = useGameStore((s) => s.lastAction);
 
   const colors = useAppColors();
+
+  // Re-read user from DB every time this tab comes into focus
+  // so stats / level always reflect the latest data.
+  useFocusEffect(
+    useCallback(() => {
+      refreshUser();
+    }, [refreshUser])
+  );
 
   if (!user) {
     return (
@@ -31,6 +42,7 @@ export default function CharacterScreen() {
   const required = xpRequiredForLevel(user.level);
   const xpProgress = required > 0 ? xpIntoLevel / required : 1;
   const totalStats = STAT_ORDER.reduce((sum, s) => sum + getEffectiveStat(s), 0);
+  const totalMissionXp = getTotalMissionXp();
 
   return (
     <ScrollView
@@ -93,6 +105,33 @@ export default function CharacterScreen() {
             </View>
           </View>
         ))}
+      </View>
+
+      {/* Mission Statistics */}
+      <View className="mt-8">
+        <View className="flex-row items-center mb-3">
+          <Ionicons name="trophy-outline" size={18} color={colors.text} />
+          <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
+            Mission Statistics
+          </Text>
+        </View>
+
+        <View
+          className="rounded-xl p-4"
+          style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center">
+              <Ionicons name="star-outline" size={20} color={colors.accent} />
+              <Text className="text-sm font-semibold ml-2" style={{ color: colors.text }}>
+                Total Mission XP Earned
+              </Text>
+            </View>
+            <Text className="text-lg font-bold" style={{ color: colors.accent }}>
+              {totalMissionXp.toLocaleString()}
+            </Text>
+          </View>
+        </View>
       </View>
     </ScrollView>
   );

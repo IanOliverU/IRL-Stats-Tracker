@@ -382,3 +382,12 @@ export function dbCustomQuestXpForStatToday(stat: StatType): number {
   );
   return row?.total ?? 0;
 }
+
+/** Total XP earned from all completed custom quests (all-time) */
+export function dbGetTotalMissionXp(): number {
+  const database = getDb();
+  const row = database.getFirstSync<{ total: number }>(
+    'SELECT COALESCE(SUM(xpReward), 0) as total FROM custom_quest WHERE completedAt IS NOT NULL'
+  );
+  return row?.total ?? 0;
+}

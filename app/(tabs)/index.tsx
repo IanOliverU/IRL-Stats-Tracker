@@ -1,6 +1,7 @@
 import { CustomQuestCard } from '@/components/CustomQuestCard';
 import { ProgressBar } from '@/components/ProgressBar';
 import { QuestCard } from '@/components/QuestCard';
+import { QuestStartAnimation } from '@/components/QuestStartAnimation';
 import { ResetAnimation } from '@/components/ResetAnimation';
 import { SettingsModal } from '@/components/SettingsModal';
 import { StatCard } from '@/components/StatCard';
@@ -10,6 +11,7 @@ import { MAX_CUSTOM_QUESTS_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -38,6 +40,7 @@ export default function DashboardScreen() {
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
   const getEffectiveStat = useGameStore((s) => s.getEffectiveStat);
   const getCustomQuestsCompletedToday = useGameStore((s) => s.getCustomQuestsCompletedToday);
+  const refreshUser = useGameStore((s) => s.refreshUser);
   const _lastAction = useGameStore((s) => s.lastAction);
 
   const colors = useAppColors();
@@ -47,6 +50,16 @@ export default function DashboardScreen() {
   // Welcome / name modal state
   const [showNameModal, setShowNameModal] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [showQuestStart, setShowQuestStart] = useState(false);
+  const [questStartName, setQuestStartName] = useState('');
+
+  // Re-read user from DB every time this tab comes into focus
+  // so level / stats always reflect the latest data.
+  useFocusEffect(
+    useCallback(() => {
+      refreshUser();
+    }, [refreshUser])
+  );
 
   // Show name modal if user has no name set
   useEffect(() => {
@@ -61,6 +74,11 @@ export default function DashboardScreen() {
     setUserName(trimmed);
     setShowNameModal(false);
     setNameInput('');
+    // Trigger quest start animation with the name
+    setQuestStartName(trimmed);
+    setTimeout(() => {
+      setShowQuestStart(true);
+    }, 300);
   }, [nameInput, setUserName]);
 
   const handleResetTriggered = useCallback(() => {
@@ -84,7 +102,6 @@ export default function DashboardScreen() {
   const required = xpRequiredForLevel(user.level);
   const xpProgress = required > 0 ? xpIntoLevel / required : 1;
   const habitCompletedCount = habits.filter((h) => isCompletedToday(h.id)).length;
-  const pendingCustom = customQuests.filter((q) => !q.completedAt);
   const customCompletedToday = getCustomQuestsCompletedToday();
 
   const handleCompleteCustom = (questId: string) => {
@@ -154,8 +171,8 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Custom Quests (pending only) */}
-        {pendingCustom.length > 0 && (
+        {/* Custom Quests (all today's quests – pending + completed) */}
+        {customQuests.length > 0 && (
           <View className="mt-8">
             <View className="flex-row items-center justify-between mb-3">
               <View className="flex-row items-center">
@@ -168,7 +185,7 @@ export default function DashboardScreen() {
                 {customCompletedToday}/{MAX_CUSTOM_QUESTS_PER_DAY} today
               </Text>
             </View>
-            {pendingCustom.map((quest) => (
+            {customQuests.map((quest) => (
               <CustomQuestCard
                 key={quest.id}
                 quest={quest}
@@ -298,6 +315,13 @@ export default function DashboardScreen() {
       <ResetAnimation
         visible={showResetAnimation}
         onAnimationComplete={handleAnimationComplete}
+      />
+
+      {/* Quest Start Animation */}
+      <QuestStartAnimation
+        visible={showQuestStart}
+        playerName={questStartName}
+        onAnimationComplete={() => setShowQuestStart(false)}
       />
     </>
   );

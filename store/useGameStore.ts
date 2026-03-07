@@ -9,6 +9,7 @@ import {
   dbGetHabits,
   dbGetItems,
   dbGetTodayCustomQuests,
+  dbGetTotalMissionXp,
   dbGetUser,
   dbResetAllData,
   dbUpdateUserName,
@@ -48,7 +49,10 @@ interface GameActions {
   completeCustomQuest: (questId: string) => CustomQuestResult;
   deleteCustomQuest: (questId: string) => void;
   getCustomQuestsCompletedToday: () => number;
+  getTotalMissionXp: () => number;
   setUserName: (name: string) => void;
+  /** Re-read user (+ items) from DB so any screen shows up-to-date stats */
+  refreshUser: () => void;
 }
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
@@ -152,11 +156,18 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   getCustomQuestsCompletedToday: () => dbCountCompletedCustomQuestsToday(),
+  getTotalMissionXp: () => dbGetTotalMissionXp(),
 
   setUserName: (name: string) => {
     dbUpdateUserName(name);
     const user = dbGetUser();
     set({ user, lastAction: get().lastAction + 1 });
+  },
+
+  refreshUser: () => {
+    const user = dbGetUser();
+    const items = dbGetItems();
+    set({ user, items, lastAction: get().lastAction + 1 });
   },
 
   getStreak: (habitId: string) => getStreakForHabit(habitId),
