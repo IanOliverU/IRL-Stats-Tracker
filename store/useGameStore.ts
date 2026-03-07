@@ -5,6 +5,7 @@ import {
   dbGetHabits,
   dbGetItems,
   dbGetUser,
+  dbResetAllData,
   dbWasCompletedToday,
   getDb,
 } from '@/services/database';
@@ -25,6 +26,7 @@ interface GameActions {
   completeHabit: (habitId: string) => void;
   addHabit: (payload: { title: string; statReward: StatType; xpReward: number; frequency: HabitFrequency }) => void;
   removeHabit: (habitId: string) => void;
+  resetData: () => void;
   getStreak: (habitId: string) => number;
   isCompletedToday: (habitId: string) => boolean;
   getEffectiveStat: (stat: StatType) => number;
@@ -79,6 +81,14 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     dbDeleteHabit(habitId);
     const habits = dbGetHabits();
     set({ habits, lastAction: get().lastAction + 1 });
+  },
+
+  resetData: () => {
+    dbResetAllData();
+    const user = dbGetUser();
+    const habits = dbGetHabits();
+    const items = dbGetItems();
+    set({ user, habits, items, lastAction: get().lastAction + 1 });
   },
 
   getStreak: (habitId: string) => getStreakForHabit(habitId),

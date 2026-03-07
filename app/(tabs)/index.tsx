@@ -1,7 +1,7 @@
 import { ProgressBar } from '@/components/ProgressBar';
 import { QuestCard } from '@/components/QuestCard';
+import { SettingsModal } from '@/components/SettingsModal';
 import { StatCard } from '@/components/StatCard';
-import { ThemePicker } from '@/components/ThemePicker';
 import { useGameHydration } from '@/hooks/useGameHydration';
 import type { StatType } from '@/models';
 import { totalXpForLevel, xpRequiredForLevel } from '@/models';
@@ -24,7 +24,7 @@ export default function DashboardScreen() {
   const _lastAction = useGameStore((s) => s.lastAction);
 
   const colors = useAppColors();
-  const [showThemePicker, setShowThemePicker] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   if (!user) {
     return (
@@ -52,13 +52,13 @@ export default function DashboardScreen() {
             LifeRPG
           </Text>
           <Pressable
-            onPress={() => setShowThemePicker(true)}
+            onPress={() => setShowSettings(true)}
             className="w-9 h-9 items-center justify-center rounded-xl"
             style={({ pressed }) => ({
               backgroundColor: pressed ? colors.inputBg : 'transparent',
             })}
           >
-            <Ionicons name="color-palette-outline" size={22} color={colors.textSecondary} />
+            <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
           </Pressable>
         </View>
 
@@ -131,10 +131,10 @@ export default function DashboardScreen() {
         )}
       </View>
 
-      {/* Theme Picker */}
-      <ThemePicker
-        visible={showThemePicker}
-        onClose={() => setShowThemePicker(false)}
+      {/* Settings */}
+      <SettingsModal
+        visible={showSettings}
+        onClose={() => setShowSettings(false)}
       />
     </ScrollView>
   );

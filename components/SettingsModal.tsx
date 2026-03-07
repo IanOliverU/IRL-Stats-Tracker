@@ -1,0 +1,306 @@
+import { ThemePicker } from '@/components/ThemePicker';
+import { useGameStore } from '@/store/useGameStore';
+import { useAppColors } from '@/store/useThemeStore';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Modal, Platform, Pressable, Text, View } from 'react-native';
+
+type SettingsModalProps = {
+    visible: boolean;
+    onClose: () => void;
+};
+
+export function SettingsModal({ visible, onClose }: SettingsModalProps) {
+    const colors = useAppColors();
+    const resetData = useGameStore((s) => s.resetData);
+
+    const [showThemePicker, setShowThemePicker] = useState(false);
+    const [showResetFlow, setShowResetFlow] = useState(false);
+    const [countdown, setCountdown] = useState(5);
+    const [isCountdownDone, setIsCountdownDone] = useState(false);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Reset state when modal opens/closes
+    useEffect(() => {
+        if (!visible) {
+            setShowResetFlow(false);
+            setCountdown(5);
+            setIsCountdownDone(false);
+            setShowConfirmModal(false);
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+        }
+    }, [visible]);
+
+    const startCountdown = useCallback(() => {
+        setShowResetFlow(true);
+        setCountdown(5);
+        setIsCountdownDone(false);
+
+        if (intervalRef.current) clearInterval(intervalRef.current);
+
+        intervalRef.current = setInterval(() => {
+            setCountdown((prev) => {
+                if (prev <= 1) {
+                    if (intervalRef.current) clearInterval(intervalRef.current);
+                    intervalRef.current = null;
+                    setIsCountdownDone(true);
+                    if (Platform.OS !== 'web') {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                    }
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+    }, []);
+
+    const handleResetPress = useCallback(() => {
+        if (!isCountdownDone) return;
+        setShowConfirmModal(true);
+    }, [isCountdownDone]);
+
+    const handleConfirmReset = useCallback(() => {
+        if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        resetData();
+        setShowConfirmModal(false);
+        setShowResetFlow(false);
+        onClose();
+    }, [resetData, onClose]);
+
+    // Clean up interval on unmount
+    useEffect(() => {
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+    }, []);
+
+    return (
+        <>
+            <Modal visible={visible && !showThemePicker} animationType="slide" transparent>
+                <View className="flex-1 justify-end" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                    <View
+                        className="rounded-t-3xl"
+                        style={{
+                            backgroundColor: colors.card,
+                            borderTopWidth: 1,
+                            borderColor: colors.cardBorder,
+                        }}
+                    >
+                        {/* Header */}
+                        <View
+                            className="flex-row items-center justify-between px-5 py-4"
+                            style={{ borderBottomWidth: 1, borderColor: colors.cardBorder }}
+                        >
+                            <Text className="text-lg font-bold" style={{ color: colors.text }}>
+                                Settings
+                            </Text>
+                            <Pressable
+                                onPress={onClose}
+                                className="w-8 h-8 items-center justify-center rounded-full"
+                                style={{ backgroundColor: colors.inputBg }}
+                            >
+                                <Ionicons name="close" size={18} color={colors.textSecondary} />
+                            </Pressable>
+                        </View>
+
+                        <View className="px-5 py-4" style={{ paddingBottom: 40 }}>
+                            {/* Theme option */}
+                            <Pressable
+                                onPress={() => setShowThemePicker(true)}
+                                className="flex-row items-center py-4 px-4 rounded-xl mb-3"
+                                style={({ pressed }) => ({
+                                    backgroundColor: pressed ? colors.inputBg : colors.background,
+                                    borderWidth: 1,
+                                    borderColor: colors.cardBorder,
+                                })}
+                            >
+                                <View
+                                    className="w-10 h-10 items-center justify-center rounded-xl mr-4"
+                                    style={{ backgroundColor: colors.accent + '15' }}
+                                >
+                                    <Ionicons name="color-palette-outline" size={20} color={colors.accent} />
+                                </View>
+                                <View className="flex-1">
+                                    <Text className="text-base font-semibold" style={{ color: colors.text }}>
+                                        Color Theme
+                                    </Text>
+                                    <Text className="text-xs mt-0.5" style={{ color: colors.textSecondary }}>
+                                        Customize the app's appearance
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                            </Pressable>
+
+                            {/* Reset Data option */}
+                            {!showResetFlow ? (
+                                <Pressable
+                                    onPress={startCountdown}
+                                    className="flex-row items-center py-4 px-4 rounded-xl"
+                                    style={({ pressed }) => ({
+                                        backgroundColor: pressed ? colors.inputBg : colors.background,
+                                        borderWidth: 1,
+                                        borderColor: colors.cardBorder,
+                                    })}
+                                >
+                                    <View
+                                        className="w-10 h-10 items-center justify-center rounded-xl mr-4"
+                                        style={{ backgroundColor: '#ef444415' }}
+                                    >
+                                        <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                                    </View>
+                                    <View className="flex-1">
+                                        <Text className="text-base font-semibold" style={{ color: colors.text }}>
+                                            Reset Data
+                                        </Text>
+                                        <Text className="text-xs mt-0.5" style={{ color: colors.textSecondary }}>
+                                            Clear all progress and start fresh
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                                </Pressable>
+                            ) : (
+                                /* Reset countdown flow */
+                                <View
+                                    className="rounded-xl p-4"
+                                    style={{
+                                        backgroundColor: colors.background,
+                                        borderWidth: 1,
+                                        borderColor: isCountdownDone ? '#ef4444' : colors.cardBorder,
+                                    }}
+                                >
+                                    <View className="flex-row items-center mb-3">
+                                        <Ionicons name="warning-outline" size={20} color="#ef4444" />
+                                        <Text className="text-sm font-semibold ml-2" style={{ color: '#ef4444' }}>
+                                            Reset Data
+                                        </Text>
+                                    </View>
+
+                                    <Text className="text-xs mb-4" style={{ color: colors.textSecondary }}>
+                                        This will permanently delete all your habits, stats, and progress.
+                                    </Text>
+
+                                    {!isCountdownDone ? (
+                                        /* Countdown in progress */
+                                        <View className="items-center py-3">
+                                            <View
+                                                className="w-14 h-14 rounded-full items-center justify-center mb-2"
+                                                style={{ backgroundColor: '#ef444415', borderWidth: 2, borderColor: '#ef444440' }}
+                                            >
+                                                <Text className="text-2xl font-bold" style={{ color: '#ef4444' }}>
+                                                    {countdown}
+                                                </Text>
+                                            </View>
+                                            <Text className="text-xs" style={{ color: colors.textTertiary }}>
+                                                Please wait...
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        /* Countdown finished — red button */
+                                        <Pressable
+                                            onPress={handleResetPress}
+                                            className="items-center py-3.5 rounded-xl"
+                                            style={({ pressed }) => ({
+                                                backgroundColor: pressed ? '#dc2626' : '#ef4444',
+                                            })}
+                                        >
+                                            <View className="flex-row items-center">
+                                                <Ionicons name="trash-outline" size={16} color="#fff" />
+                                                <Text className="text-sm font-bold text-white ml-1.5">
+                                                    Reset Data
+                                                </Text>
+                                            </View>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Cancel link */}
+                                    <Pressable
+                                        onPress={() => {
+                                            setShowResetFlow(false);
+                                            setCountdown(5);
+                                            setIsCountdownDone(false);
+                                            if (intervalRef.current) {
+                                                clearInterval(intervalRef.current);
+                                                intervalRef.current = null;
+                                            }
+                                        }}
+                                        className="items-center mt-3"
+                                    >
+                                        <Text className="text-xs font-medium" style={{ color: colors.textSecondary }}>
+                                            Cancel
+                                        </Text>
+                                    </Pressable>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Confirmation Modal */}
+            <Modal visible={showConfirmModal} animationType="fade" transparent>
+                <View className="flex-1 items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: 24 }}>
+                    <View
+                        className="rounded-2xl p-6 w-full"
+                        style={{
+                            backgroundColor: colors.card,
+                            borderWidth: 1,
+                            borderColor: '#ef444440',
+                            maxWidth: 340,
+                        }}
+                    >
+                        <View className="items-center mb-4">
+                            <View
+                                className="w-14 h-14 rounded-full items-center justify-center mb-3"
+                                style={{ backgroundColor: '#ef444415' }}
+                            >
+                                <Ionicons name="alert-circle-outline" size={32} color="#ef4444" />
+                            </View>
+                            <Text className="text-lg font-bold text-center" style={{ color: colors.text }}>
+                                Are you sure?
+                            </Text>
+                        </View>
+
+                        <Text className="text-sm text-center leading-5 mb-6" style={{ color: colors.textSecondary }}>
+                            Your progress and stats will be permanently deleted and cannot be restored.
+                        </Text>
+
+                        <Pressable
+                            onPress={handleConfirmReset}
+                            className="items-center py-3.5 rounded-xl mb-3"
+                            style={({ pressed }) => ({
+                                backgroundColor: pressed ? '#dc2626' : '#ef4444',
+                            })}
+                        >
+                            <Text className="text-sm font-bold text-white">
+                                Yes, Delete Everything
+                            </Text>
+                        </Pressable>
+
+                        <Pressable
+                            onPress={() => setShowConfirmModal(false)}
+                            className="items-center py-3.5 rounded-xl"
+                            style={{ backgroundColor: colors.inputBg }}
+                        >
+                            <Text className="text-sm font-medium" style={{ color: colors.text }}>
+                                Cancel
+                            </Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Theme Picker */}
+            <ThemePicker
+                visible={showThemePicker}
+                onClose={() => setShowThemePicker(false)}
+            />
+        </>
+    );
+}

@@ -244,3 +244,37 @@ export function dbSetSetting(key: string, value: string): void {
     [key, value]
   );
 }
+
+// --- Reset ---
+/** Wipes all game data and re-seeds defaults. Preserves settings. */
+export function dbResetAllData(): void {
+  const database = getDb();
+  database.execSync(`
+    DELETE FROM habit_log;
+    DELETE FROM habit;
+    DELETE FROM item;
+    DELETE FROM user;
+  `);
+
+  // Re-seed user
+  const now = new Date().toISOString();
+  database.runSync(
+    'INSERT INTO user (id, level, xp, str, int, wis, cha, vit, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ['default', 1, 0, 0, 0, 0, 0, 0, now, now]
+  );
+
+  // Re-seed default items
+  const items: [string, string, string, number, string, string][] = [
+    ['running-shoes', 'Running Shoes', 'STR', 2, 'Complete 7 STR habits', now],
+    ['laptop', 'Laptop', 'INT', 2, 'Complete 7 INT habits', now],
+    ['bookmark', 'Bookmark', 'WIS', 2, 'Complete 7 WIS habits', now],
+    ['name-tag', 'Name Tag', 'CHA', 2, 'Complete 5 CHA habits', now],
+    ['water-bottle', 'Water Bottle', 'VIT', 2, 'Complete 7 VIT habits', now],
+  ];
+  for (const [id, name, stat, amount, condition, createdAt] of items) {
+    database.runSync(
+      'INSERT INTO item (id, name, statBonus, bonusAmount, unlockCondition, unlockedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, name, stat, amount, condition, null, createdAt]
+    );
+  }
+}
