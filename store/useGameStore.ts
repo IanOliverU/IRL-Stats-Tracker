@@ -1,21 +1,33 @@
-import type { Habit, HabitFrequency, Item, StatType, User } from '@/models';
+import type { CustomQuest, Difficulty, Habit, HabitFrequency, Item, StatType, User } from '@/models';
+import { DIFFICULTY_XP } from '@/models';
 import {
+  dbCountCompletedCustomQuestsToday,
+  dbCreateCustomQuest,
   dbCreateHabit,
+  dbDeleteCustomQuest,
   dbDeleteHabit,
   dbGetHabits,
   dbGetItems,
+  dbGetTodayCustomQuests,
   dbGetUser,
   dbResetAllData,
   dbWasCompletedToday,
   getDb,
 } from '@/services/database';
-import { completeHabit as doCompleteHabit, getEffectiveStat, getStreakForHabit } from '@/services/habitService';
+import {
+  completeCustomQuest as doCompleteCustomQuest,
+  completeHabit as doCompleteHabit,
+  getEffectiveStat,
+  getStreakForHabit,
+  type CustomQuestResult,
+} from '@/services/habitService';
 import { create } from 'zustand';
 
 interface GameState {
   user: User | null;
   habits: Habit[];
   items: Item[];
+  customQuests: CustomQuest[];
   hydrated: boolean;
   /** Incremented on every mutation to force re-renders of computed selectors */
   lastAction: number;
@@ -30,12 +42,18 @@ interface GameActions {
   getStreak: (habitId: string) => number;
   isCompletedToday: (habitId: string) => boolean;
   getEffectiveStat: (stat: StatType) => number;
+  // Custom quests
+  addCustomQuest: (payload: { title: string; statReward: StatType; difficulty: Difficulty }) => void;
+  completeCustomQuest: (questId: string) => CustomQuestResult;
+  deleteCustomQuest: (questId: string) => void;
+  getCustomQuestsCompletedToday: () => number;
 }
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
   user: null,
   habits: [],
   items: [],
+  customQuests: [],
   hydrated: false,
   lastAction: 0,
 
@@ -45,7 +63,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       const user = dbGetUser();
       const habits = dbGetHabits();
       const items = dbGetItems();
-      set({ user, habits, items, hydrated: true });
+      const customQuests = dbGetTodayCustomQuests();
+      set({ user, habits, items, customQuests, hydrated: true });
     } catch (e) {
       console.warn('DB hydrate failed', e);
       set({ hydrated: true });
@@ -88,8 +107,49 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const user = dbGetUser();
     const habits = dbGetHabits();
     const items = dbGetItems();
-    set({ user, habits, items, lastAction: get().lastAction + 1 });
+    const customQuests = dbGetTodayCustomQuests();
+    set({ user, habits, items, customQuests, lastAction: get().lastAction + 1 });
   },
+
+  // ─── Custom Quest Actions ─────────────────────────────
+
+  addCustomQuest: (payload) => {
+    const id = `cq_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const xpReward = DIFFICULTY_XP[payload.difficulty];
+    const now = new Date().toISOString();
+    dbCreateCustomQuest({
+      id,
+      title: payload.title,
+      statReward: payload.statReward,
+      difficulty: payload.difficulty,
+      xpReward,
+      createdAt: now,
+    });
+    const customQuests = dbGetTodayCustomQuests();
+    set({ customQuests, lastAction: get().lastAction + 1 });
+  },
+
+  completeCustomQuest: (questId: string) => {
+    const quest = get().customQuests.find((q) => q.id === questId);
+    if (!quest) return { success: false as const, reason: 'daily_limit' as const, message: 'Quest not found' };
+
+    const result = doCompleteCustomQuest(quest);
+    if (result.success) {
+      const user = dbGetUser();
+      const items = dbGetItems();
+      const customQuests = dbGetTodayCustomQuests();
+      set({ user, items, customQuests, lastAction: get().lastAction + 1 });
+    }
+    return result;
+  },
+
+  deleteCustomQuest: (questId: string) => {
+    dbDeleteCustomQuest(questId);
+    const customQuests = dbGetTodayCustomQuests();
+    set({ customQuests, lastAction: get().lastAction + 1 });
+  },
+
+  getCustomQuestsCompletedToday: () => dbCountCompletedCustomQuestsToday(),
 
   getStreak: (habitId: string) => getStreakForHabit(habitId),
   isCompletedToday: dbWasCompletedToday,

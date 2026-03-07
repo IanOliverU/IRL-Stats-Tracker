@@ -2,8 +2,8 @@ import '../global.css';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Platform, StatusBar } from 'react-native';
 import 'react-native-reanimated';
 
 import { useGameStore } from '@/store/useGameStore';
@@ -23,13 +23,19 @@ export default function RootLayout() {
     hydrateTheme();
   }, [hydrate, hydrateTheme]);
 
+  useEffect(() => {
+    StatusBar.setHidden(true, 'fade');
+    if (Platform.OS === 'android') {
+      StatusBar.setTranslucent(true);
+    }
+  }, []);
+
   return (
     <ThemeProvider value={themeGroup === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
-      <StatusBar style={themeGroup === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
   );
 }

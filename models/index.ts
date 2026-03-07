@@ -47,6 +47,44 @@ export interface Item {
   createdAt: string;
 }
 
+// ─── Custom Quests ──────────────────────────────────────
+
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
+export interface CustomQuest {
+  id: string;
+  title: string;
+  statReward: StatType;
+  difficulty: Difficulty;
+  xpReward: number;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export const DIFFICULTY_XP: Record<Difficulty, number> = {
+  easy: 20,
+  medium: 40,
+  hard: 60,
+};
+
+export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
+  easy: 'Easy',
+  medium: 'Medium',
+  hard: 'Hard',
+};
+
+export const DIFFICULTY_COLORS: Record<Difficulty, string> = {
+  easy: '#22c55e',
+  medium: '#f59e0b',
+  hard: '#ef4444',
+};
+
+/** Max custom quests a user can complete per day */
+export const MAX_CUSTOM_QUESTS_PER_DAY = 3;
+
+/** Max XP a user can earn per stat per day from custom quests */
+export const MAX_CUSTOM_XP_PER_STAT_PER_DAY = 100;
+
 export const STAT_LABELS: Record<StatType, string> = {
   STR: 'Strength',
   INT: 'Intelligence',

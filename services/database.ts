@@ -1,4 +1,4 @@
-import type { Habit, HabitLog, Item, User } from '@/models';
+import type { CustomQuest, Habit, HabitLog, Item, StatType, User } from '@/models';
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'liferpg.db';
@@ -62,6 +62,16 @@ function initSchema(database: SQLite.SQLiteDatabase) {
 
     CREATE INDEX IF NOT EXISTS idx_habit_log_habit ON habit_log(habitId);
     CREATE INDEX IF NOT EXISTS idx_habit_log_completed ON habit_log(completedAt);
+
+    CREATE TABLE IF NOT EXISTS custom_quest (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      statReward TEXT NOT NULL,
+      difficulty TEXT NOT NULL,
+      xpReward INTEGER NOT NULL,
+      completedAt TEXT,
+      createdAt TEXT NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -254,6 +264,7 @@ export function dbResetAllData(): void {
     DELETE FROM habit;
     DELETE FROM item;
     DELETE FROM user;
+    DELETE FROM custom_quest;
   `);
 
   // Re-seed user
@@ -262,6 +273,21 @@ export function dbResetAllData(): void {
     'INSERT INTO user (id, level, xp, str, int, wis, cha, vit, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ['default', 1, 0, 0, 0, 0, 0, 0, now, now]
   );
+
+  // Re-seed default habits
+  const defaults = [
+    ['gym', 'Gym', 'STR', 50, 'daily', now, now],
+    ['coding', 'Coding', 'INT', 40, 'daily', now, now],
+    ['reading', 'Reading', 'WIS', 30, 'daily', now, now],
+    ['social', 'Social', 'CHA', 35, 'weekly', now, now],
+    ['sleep', 'Sleep well', 'VIT', 25, 'daily', now, now],
+  ];
+  for (const row of defaults) {
+    database.runSync(
+      'INSERT INTO habit (id, title, statReward, xpReward, frequency, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      row
+    );
+  }
 
   // Re-seed default items
   const items: [string, string, string, number, string, string][] = [
@@ -277,4 +303,66 @@ export function dbResetAllData(): void {
       [id, name, stat, amount, condition, null, createdAt]
     );
   }
+}
+
+// --- Custom Quests ---
+
+export function dbCreateCustomQuest(quest: Omit<CustomQuest, 'completedAt'>): void {
+  const database = getDb();
+  database.runSync(
+    'INSERT INTO custom_quest (id, title, statReward, difficulty, xpReward, completedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [quest.id, quest.title, quest.statReward, quest.difficulty, quest.xpReward, null, quest.createdAt]
+  );
+}
+
+/** Get all custom quests created today (both completed and pending) */
+export function dbGetTodayCustomQuests(): CustomQuest[] {
+  const database = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const start = `${today}T00:00:00.000Z`;
+  const end = `${today}T23:59:59.999Z`;
+  const rows = database.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM custom_quest WHERE createdAt >= ? AND createdAt <= ? ORDER BY createdAt DESC',
+    [start, end]
+  );
+  return (rows ?? []) as unknown as CustomQuest[];
+}
+
+/** Complete a custom quest by ID */
+export function dbCompleteCustomQuest(questId: string): void {
+  const database = getDb();
+  const now = new Date().toISOString();
+  database.runSync('UPDATE custom_quest SET completedAt = ? WHERE id = ?', [now, questId]);
+}
+
+/** Delete a custom quest */
+export function dbDeleteCustomQuest(questId: string): void {
+  const database = getDb();
+  database.runSync('DELETE FROM custom_quest WHERE id = ?', [questId]);
+}
+
+/** Count how many custom quests were completed today */
+export function dbCountCompletedCustomQuestsToday(): number {
+  const database = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const start = `${today}T00:00:00.000Z`;
+  const end = `${today}T23:59:59.999Z`;
+  const row = database.getFirstSync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM custom_quest WHERE completedAt IS NOT NULL AND completedAt >= ? AND completedAt <= ?',
+    [start, end]
+  );
+  return row?.count ?? 0;
+}
+
+/** Total XP earned from custom quests for a given stat today */
+export function dbCustomQuestXpForStatToday(stat: StatType): number {
+  const database = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const start = `${today}T00:00:00.000Z`;
+  const end = `${today}T23:59:59.999Z`;
+  const row = database.getFirstSync<{ total: number }>(
+    'SELECT COALESCE(SUM(xpReward), 0) as total FROM custom_quest WHERE completedAt IS NOT NULL AND statReward = ? AND completedAt >= ? AND completedAt <= ?',
+    [stat, start, end]
+  );
+  return row?.total ?? 0;
 }

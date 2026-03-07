@@ -1,15 +1,16 @@
+import { CustomQuestCard } from '@/components/CustomQuestCard';
 import { ProgressBar } from '@/components/ProgressBar';
 import { QuestCard } from '@/components/QuestCard';
 import { SettingsModal } from '@/components/SettingsModal';
 import { StatCard } from '@/components/StatCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
 import type { StatType } from '@/models';
-import { totalXpForLevel, xpRequiredForLevel } from '@/models';
+import { MAX_CUSTOM_QUESTS_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '@/models';
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
 
@@ -17,10 +18,13 @@ export default function DashboardScreen() {
   useGameHydration();
   const user = useGameStore((s) => s.user);
   const habits = useGameStore((s) => s.habits);
+  const customQuests = useGameStore((s) => s.customQuests);
   const completeHabit = useGameStore((s) => s.completeHabit);
+  const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
   const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
   const getEffectiveStat = useGameStore((s) => s.getEffectiveStat);
+  const getCustomQuestsCompletedToday = useGameStore((s) => s.getCustomQuestsCompletedToday);
   const _lastAction = useGameStore((s) => s.lastAction);
 
   const colors = useAppColors();
@@ -37,7 +41,16 @@ export default function DashboardScreen() {
   const xpIntoLevel = user.xp - totalXpForLevel(user.level);
   const required = xpRequiredForLevel(user.level);
   const xpProgress = required > 0 ? xpIntoLevel / required : 1;
-  const completedCount = habits.filter((h) => isCompletedToday(h.id)).length;
+  const habitCompletedCount = habits.filter((h) => isCompletedToday(h.id)).length;
+  const pendingCustom = customQuests.filter((q) => !q.completedAt);
+  const customCompletedToday = getCustomQuestsCompletedToday();
+
+  const handleCompleteCustom = (questId: string) => {
+    const result = completeCustomQuestAction(questId);
+    if (!result.success) {
+      Alert.alert('Limit Reached', result.message);
+    }
+  };
 
   return (
     <ScrollView
@@ -77,11 +90,6 @@ export default function DashboardScreen() {
           </Text>
         </View>
         <ProgressBar progress={xpProgress} height={10} />
-        {habits.length > 0 && (
-          <Text className="text-xs mt-2 text-center" style={{ color: colors.textTertiary }}>
-            {completedCount}/{habits.length} quests completed today
-          </Text>
-        )}
       </View>
 
       {/* Stats */}
@@ -99,18 +107,43 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Quests */}
+      {/* Custom Quests (pending only) */}
+      {pendingCustom.length > 0 && (
+        <View className="mt-8">
+          <View className="flex-row items-center justify-between mb-3">
+            <View className="flex-row items-center">
+              <Ionicons name="add-circle-outline" size={18} color={colors.text} />
+              <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
+                Custom Quests
+              </Text>
+            </View>
+            <Text className="text-xs" style={{ color: colors.textTertiary }}>
+              {customCompletedToday}/{MAX_CUSTOM_QUESTS_PER_DAY} today
+            </Text>
+          </View>
+          {pendingCustom.map((quest) => (
+            <CustomQuestCard
+              key={quest.id}
+              quest={quest}
+              onComplete={() => handleCompleteCustom(quest.id)}
+              onDelete={() => { }}
+            />
+          ))}
+        </View>
+      )}
+
+      {/* Daily Habits */}
       <View className="mt-8">
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center">
             <Ionicons name="flash-outline" size={18} color={colors.text} />
             <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
-              Today's Quests
+              Today's Habits
             </Text>
           </View>
           {habits.length > 0 && (
             <Text className="text-xs" style={{ color: colors.textTertiary }}>
-              {completedCount}/{habits.length}
+              {habitCompletedCount}/{habits.length}
             </Text>
           )}
         </View>

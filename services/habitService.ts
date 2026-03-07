@@ -1,12 +1,15 @@
-import type { Habit, StatType, User } from '@/models';
-import { totalXpForLevel, xpRequiredForLevel } from '@/models';
+import type { CustomQuest, Habit, StatType, User } from '@/models';
+import { MAX_CUSTOM_QUESTS_PER_DAY, MAX_CUSTOM_XP_PER_STAT_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '@/models';
 import {
-    dbGetItems,
-    dbGetLogsForHabit,
-    dbGetUser,
-    dbInsertHabitLog,
-    dbUnlockItem,
-    dbUpdateUser,
+  dbCompleteCustomQuest,
+  dbCountCompletedCustomQuestsToday,
+  dbCustomQuestXpForStatToday,
+  dbGetItems,
+  dbGetLogsForHabit,
+  dbGetUser,
+  dbInsertHabitLog,
+  dbUnlockItem,
+  dbUpdateUser,
 } from './database';
 
 const STREAK_BONUS_PER_DAY = 5;
@@ -30,7 +33,6 @@ function getDaysBetween(a: Date, b: Date): number {
 export function getStreakForHabit(habitId: string): number {
   const logs = dbGetLogsForHabit(habitId);
   if (logs.length === 0) return 0;
-  const today = getStartOfDay(new Date());
   const sortedByDate = [...logs].sort(
     (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
   );
@@ -120,4 +122,62 @@ export function getEffectiveStat(user: User, stat: StatType): number {
   const items = dbGetItems().filter((i) => i.statBonus === stat && i.unlockedAt);
   const bonus = items.reduce((sum, i) => sum + i.bonusAmount, 0);
   return base + bonus;
+}
+
+// ─── Custom Quest Completion ────────────────────────────
+
+export type CustomQuestResult =
+  | { success: true }
+  | { success: false; reason: 'daily_limit' | 'stat_limit'; message: string };
+
+/** Complete a custom quest with safety limit checks. */
+export function completeCustomQuest(quest: CustomQuest): CustomQuestResult {
+  // Safety check 1: max quests per day
+  const completedToday = dbCountCompletedCustomQuestsToday();
+  if (completedToday >= MAX_CUSTOM_QUESTS_PER_DAY) {
+    return {
+      success: false,
+      reason: 'daily_limit',
+      message: `Daily limit reached (${MAX_CUSTOM_QUESTS_PER_DAY} per day)`,
+    };
+  }
+
+  // Safety check 2: max XP per stat per day
+  const xpForStat = dbCustomQuestXpForStatToday(quest.statReward);
+  if (xpForStat + quest.xpReward > MAX_CUSTOM_XP_PER_STAT_PER_DAY) {
+    return {
+      success: false,
+      reason: 'stat_limit',
+      message: `${quest.statReward} XP limit reached (${MAX_CUSTOM_XP_PER_STAT_PER_DAY}/day)`,
+    };
+  }
+
+  // Complete the quest in DB
+  dbCompleteCustomQuest(quest.id);
+
+  // Award XP and stat point
+  const user = dbGetUser();
+  if (!user) return { success: true };
+
+  const statKey = quest.statReward.toLowerCase() as keyof Pick<User, 'str' | 'int' | 'wis' | 'cha' | 'vit'>;
+  const currentStat = user[statKey] as number;
+  const totalXp = user.xp + quest.xpReward;
+  const currentLevel = user.level;
+  let xpIntoLevel = totalXp - totalXpForLevel(currentLevel);
+  let required = xpRequiredForLevel(currentLevel);
+  let newLevel = currentLevel;
+  while (xpIntoLevel >= required) {
+    xpIntoLevel -= required;
+    newLevel++;
+    required = xpRequiredForLevel(newLevel);
+  }
+
+  dbUpdateUser({
+    [statKey]: currentStat + 1,
+    xp: totalXpForLevel(newLevel) + xpIntoLevel,
+    level: newLevel,
+  });
+
+  checkItemUnlocks();
+  return { success: true };
 }
