@@ -10,8 +10,18 @@ import { MAX_CUSTOM_QUESTS_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
 
@@ -23,6 +33,7 @@ export default function DashboardScreen() {
   const completeHabit = useGameStore((s) => s.completeHabit);
   const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
   const resetData = useGameStore((s) => s.resetData);
+  const setUserName = useGameStore((s) => s.setUserName);
   const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
   const getEffectiveStat = useGameStore((s) => s.getEffectiveStat);
@@ -32,6 +43,25 @@ export default function DashboardScreen() {
   const colors = useAppColors();
   const [showSettings, setShowSettings] = useState(false);
   const [showResetAnimation, setShowResetAnimation] = useState(false);
+
+  // Welcome / name modal state
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+
+  // Show name modal if user has no name set
+  useEffect(() => {
+    if (user && !user.name) {
+      setShowNameModal(true);
+    }
+  }, [user]);
+
+  const handleSetName = useCallback(() => {
+    const trimmed = nameInput.trim();
+    if (!trimmed) return;
+    setUserName(trimmed);
+    setShowNameModal(false);
+    setNameInput('');
+  }, [nameInput, setUserName]);
 
   const handleResetTriggered = useCallback(() => {
     setShowResetAnimation(true);
@@ -64,6 +94,8 @@ export default function DashboardScreen() {
     }
   };
 
+  const displayName = user.name || 'LifeRPG';
+
   return (
     <>
       <ScrollView
@@ -74,9 +106,11 @@ export default function DashboardScreen() {
         {/* Hero */}
         <View className="mt-4">
           <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-2xl font-bold" style={{ color: colors.text }}>
-              LifeRPG
-            </Text>
+            <View className="flex-1 mr-3">
+              <Text className="text-2xl font-bold" numberOfLines={1} style={{ color: colors.text }}>
+                {displayName}
+              </Text>
+            </View>
             <Pressable
               onPress={() => setShowSettings(true)}
               className="w-9 h-9 items-center justify-center rounded-xl"
@@ -178,6 +212,81 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
 
+      {/* Welcome / Name Modal */}
+      <Modal visible={showNameModal} animationType="fade" transparent>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          className="flex-1 items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)', padding: 24 }}
+        >
+          <View
+            className="rounded-2xl p-6 w-full"
+            style={{
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.cardBorder,
+              maxWidth: 340,
+            }}
+          >
+            {/* Icon */}
+            <View className="items-center mb-4">
+              <View
+                className="w-16 h-16 rounded-2xl items-center justify-center mb-3"
+                style={{ backgroundColor: colors.accent + '15' }}
+              >
+                <Ionicons name="person-outline" size={32} color={colors.accent} />
+              </View>
+              <Text className="text-xl font-bold text-center" style={{ color: colors.text }}>
+                Welcome, Adventurer!
+              </Text>
+              <Text className="text-sm text-center mt-1" style={{ color: colors.textSecondary }}>
+                What should we call you?
+              </Text>
+            </View>
+
+            {/* Name input */}
+            <TextInput
+              className="rounded-xl px-4 py-3.5 text-base mb-4"
+              style={{
+                backgroundColor: colors.inputBg,
+                color: colors.text,
+                borderWidth: 1,
+                borderColor: colors.inputBorder,
+                textAlign: 'center',
+                fontSize: 18,
+                fontWeight: '600',
+              }}
+              placeholder="Enter your name"
+              placeholderTextColor={colors.textTertiary}
+              value={nameInput}
+              onChangeText={setNameInput}
+              autoCapitalize="words"
+              autoFocus
+              maxLength={20}
+              onSubmitEditing={handleSetName}
+              returnKeyType="done"
+            />
+
+            {/* Submit button */}
+            <Pressable
+              onPress={handleSetName}
+              className="items-center py-3.5 rounded-xl"
+              style={({ pressed }) => ({
+                backgroundColor: nameInput.trim() ? colors.accent : colors.inputBg,
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Text
+                className="text-sm font-bold"
+                style={{ color: nameInput.trim() ? '#fff' : colors.textTertiary }}
+              >
+                Start Adventure
+              </Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Settings */}
       <SettingsModal
         visible={showSettings}
@@ -185,7 +294,7 @@ export default function DashboardScreen() {
         onResetTriggered={handleResetTriggered}
       />
 
-      {/* SAO Reset Animation — lives at screen level so it persists */}
+      {/* SAO Reset Animation */}
       <ResetAnimation
         visible={showResetAnimation}
         onAnimationComplete={handleAnimationComplete}

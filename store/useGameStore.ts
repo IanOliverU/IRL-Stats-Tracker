@@ -11,8 +11,9 @@ import {
   dbGetTodayCustomQuests,
   dbGetUser,
   dbResetAllData,
+  dbUpdateUserName,
   dbWasCompletedToday,
-  getDb,
+  getDb
 } from '@/services/database';
 import {
   completeCustomQuest as doCompleteCustomQuest,
@@ -47,6 +48,7 @@ interface GameActions {
   completeCustomQuest: (questId: string) => CustomQuestResult;
   deleteCustomQuest: (questId: string) => void;
   getCustomQuestsCompletedToday: () => number;
+  setUserName: (name: string) => void;
 }
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
@@ -150,6 +152,12 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   getCustomQuestsCompletedToday: () => dbCountCompletedCustomQuestsToday(),
+
+  setUserName: (name: string) => {
+    dbUpdateUserName(name);
+    const user = dbGetUser();
+    set({ user, lastAction: get().lastAction + 1 });
+  },
 
   getStreak: (habitId: string) => getStreakForHabit(habitId),
   isCompletedToday: dbWasCompletedToday,

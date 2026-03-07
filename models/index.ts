@@ -8,6 +8,7 @@ export type HabitFrequency = 'daily' | 'weekly';
 
 export interface User {
   id: string;
+  name: string | null;
   level: number;
   xp: number;
   str: number;
@@ -18,6 +19,7 @@ export interface User {
   createdAt: string;
   updatedAt: string;
 }
+
 
 export interface Habit {
   id: string;

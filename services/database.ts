@@ -79,13 +79,20 @@ function initSchema(database: SQLite.SQLiteDatabase) {
     );
   `);
 
+  // Migration: add name column if not present
+  try {
+    database.runSync('ALTER TABLE user ADD COLUMN name TEXT');
+  } catch (_e) {
+    // Column already exists — ignore
+  }
+
   // Seed default user if none exists
   const userRow = database.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM user');
   if (userRow && userRow.count === 0) {
     const now = new Date().toISOString();
     database.runSync(
-      'INSERT INTO user (id, level, xp, str, int, wis, cha, vit, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      ['default', 1, 0, 0, 0, 0, 0, 0, now, now]
+      'INSERT INTO user (id, name, level, xp, str, int, wis, cha, vit, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ['default', null, 1, 0, 0, 0, 0, 0, 0, now, now]
     );
   }
 
@@ -152,6 +159,15 @@ export function dbUpdateUser(updates: Partial<Omit<User, 'id'>>): void {
     'UPDATE user SET level = ?, xp = ?, str = ?, int = ?, wis = ?, cha = ?, vit = ?, updatedAt = ? WHERE id = ?',
     [level, xp, str, int, wis, cha, vit, updatedAt, user.id]
   );
+}
+
+export function dbUpdateUserName(name: string): void {
+  const database = getDb();
+  database.runSync('UPDATE user SET name = ?, updatedAt = ? WHERE id = ?', [
+    name,
+    new Date().toISOString(),
+    'default',
+  ]);
 }
 
 // --- Habits ---
@@ -267,11 +283,11 @@ export function dbResetAllData(): void {
     DELETE FROM custom_quest;
   `);
 
-  // Re-seed user
+  // Re-seed user (name = null so welcome modal appears)
   const now = new Date().toISOString();
   database.runSync(
-    'INSERT INTO user (id, level, xp, str, int, wis, cha, vit, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ['default', 1, 0, 0, 0, 0, 0, 0, now, now]
+    'INSERT INTO user (id, name, level, xp, str, int, wis, cha, vit, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ['default', null, 1, 0, 0, 0, 0, 0, 0, now, now]
   );
 
   // Re-seed default habits
