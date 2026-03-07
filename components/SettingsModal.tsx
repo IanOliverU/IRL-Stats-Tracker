@@ -1,5 +1,4 @@
 import { ThemePicker } from '@/components/ThemePicker';
-import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -9,11 +8,11 @@ import { Modal, Platform, Pressable, Text, View } from 'react-native';
 type SettingsModalProps = {
     visible: boolean;
     onClose: () => void;
+    onResetTriggered: () => void;
 };
 
-export function SettingsModal({ visible, onClose }: SettingsModalProps) {
+export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsModalProps) {
     const colors = useAppColors();
-    const resetData = useGameStore((s) => s.resetData);
 
     const [showThemePicker, setShowThemePicker] = useState(false);
     const [showResetFlow, setShowResetFlow] = useState(false);
@@ -22,7 +21,6 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Reset state when modal opens/closes
     useEffect(() => {
         if (!visible) {
             setShowResetFlow(false);
@@ -40,9 +38,7 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
         setShowResetFlow(true);
         setCountdown(5);
         setIsCountdownDone(false);
-
         if (intervalRef.current) clearInterval(intervalRef.current);
-
         intervalRef.current = setInterval(() => {
             setCountdown((prev) => {
                 if (prev <= 1) {
@@ -68,13 +64,14 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
         if (Platform.OS !== 'web') {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
-        resetData();
         setShowConfirmModal(false);
         setShowResetFlow(false);
         onClose();
-    }, [resetData, onClose]);
+        setTimeout(() => {
+            onResetTriggered();
+        }, 300);
+    }, [onClose, onResetTriggered]);
 
-    // Clean up interval on unmount
     useEffect(() => {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
@@ -93,7 +90,6 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                             borderColor: colors.cardBorder,
                         }}
                     >
-                        {/* Header */}
                         <View
                             className="flex-row items-center justify-between px-5 py-4"
                             style={{ borderBottomWidth: 1, borderColor: colors.cardBorder }}
@@ -111,7 +107,6 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                         </View>
 
                         <View className="px-5 py-4" style={{ paddingBottom: 40 }}>
-                            {/* Theme option */}
                             <Pressable
                                 onPress={() => setShowThemePicker(true)}
                                 className="flex-row items-center py-4 px-4 rounded-xl mb-3"
@@ -138,7 +133,6 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                                 <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
                             </Pressable>
 
-                            {/* Reset Data option */}
                             {!showResetFlow ? (
                                 <Pressable
                                     onPress={startCountdown}
@@ -166,7 +160,6 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                                     <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
                                 </Pressable>
                             ) : (
-                                /* Reset countdown flow */
                                 <View
                                     className="rounded-xl p-4"
                                     style={{
@@ -181,13 +174,10 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                                             Reset Data
                                         </Text>
                                     </View>
-
                                     <Text className="text-xs mb-4" style={{ color: colors.textSecondary }}>
                                         This will permanently delete all your habits, stats, and progress.
                                     </Text>
-
                                     {!isCountdownDone ? (
-                                        /* Countdown in progress */
                                         <View className="items-center py-3">
                                             <View
                                                 className="w-14 h-14 rounded-full items-center justify-center mb-2"
@@ -202,7 +192,6 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                                             </Text>
                                         </View>
                                     ) : (
-                                        /* Countdown finished — red button */
                                         <Pressable
                                             onPress={handleResetPress}
                                             className="items-center py-3.5 rounded-xl"
@@ -212,14 +201,10 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                                         >
                                             <View className="flex-row items-center">
                                                 <Ionicons name="trash-outline" size={16} color="#fff" />
-                                                <Text className="text-sm font-bold text-white ml-1.5">
-                                                    Reset Data
-                                                </Text>
+                                                <Text className="text-sm font-bold text-white ml-1.5">Reset Data</Text>
                                             </View>
                                         </Pressable>
                                     )}
-
-                                    {/* Cancel link */}
                                     <Pressable
                                         onPress={() => {
                                             setShowResetFlow(false);
@@ -243,7 +228,6 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                 </View>
             </Modal>
 
-            {/* Confirmation Modal */}
             <Modal visible={showConfirmModal} animationType="fade" transparent>
                 <View className="flex-1 items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: 24 }}>
                     <View
@@ -266,11 +250,9 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                                 Are you sure?
                             </Text>
                         </View>
-
                         <Text className="text-sm text-center leading-5 mb-6" style={{ color: colors.textSecondary }}>
                             Your progress and stats will be permanently deleted and cannot be restored.
                         </Text>
-
                         <Pressable
                             onPress={handleConfirmReset}
                             className="items-center py-3.5 rounded-xl mb-3"
@@ -278,25 +260,19 @@ export function SettingsModal({ visible, onClose }: SettingsModalProps) {
                                 backgroundColor: pressed ? '#dc2626' : '#ef4444',
                             })}
                         >
-                            <Text className="text-sm font-bold text-white">
-                                Yes, Delete Everything
-                            </Text>
+                            <Text className="text-sm font-bold text-white">Yes, Delete Everything</Text>
                         </Pressable>
-
                         <Pressable
                             onPress={() => setShowConfirmModal(false)}
                             className="items-center py-3.5 rounded-xl"
                             style={{ backgroundColor: colors.inputBg }}
                         >
-                            <Text className="text-sm font-medium" style={{ color: colors.text }}>
-                                Cancel
-                            </Text>
+                            <Text className="text-sm font-medium" style={{ color: colors.text }}>Cancel</Text>
                         </Pressable>
                     </View>
                 </View>
             </Modal>
 
-            {/* Theme Picker */}
             <ThemePicker
                 visible={showThemePicker}
                 onClose={() => setShowThemePicker(false)}

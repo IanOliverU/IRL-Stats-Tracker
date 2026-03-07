@@ -1,6 +1,7 @@
 import { CustomQuestCard } from '@/components/CustomQuestCard';
 import { ProgressBar } from '@/components/ProgressBar';
 import { QuestCard } from '@/components/QuestCard';
+import { ResetAnimation } from '@/components/ResetAnimation';
 import { SettingsModal } from '@/components/SettingsModal';
 import { StatCard } from '@/components/StatCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
@@ -9,7 +10,7 @@ import { MAX_CUSTOM_QUESTS_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
@@ -21,6 +22,7 @@ export default function DashboardScreen() {
   const customQuests = useGameStore((s) => s.customQuests);
   const completeHabit = useGameStore((s) => s.completeHabit);
   const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
+  const resetData = useGameStore((s) => s.resetData);
   const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
   const getEffectiveStat = useGameStore((s) => s.getEffectiveStat);
@@ -29,6 +31,16 @@ export default function DashboardScreen() {
 
   const colors = useAppColors();
   const [showSettings, setShowSettings] = useState(false);
+  const [showResetAnimation, setShowResetAnimation] = useState(false);
+
+  const handleResetTriggered = useCallback(() => {
+    setShowResetAnimation(true);
+  }, []);
+
+  const handleAnimationComplete = useCallback(() => {
+    resetData();
+    setShowResetAnimation(false);
+  }, [resetData]);
 
   if (!user) {
     return (
@@ -53,122 +65,131 @@ export default function DashboardScreen() {
   };
 
   return (
-    <ScrollView
-      className="flex-1"
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-    >
-      {/* Hero */}
-      <View className="mt-4">
-        <View className="flex-row items-center justify-between mb-3">
-          <Text className="text-2xl font-bold" style={{ color: colors.text }}>
-            LifeRPG
-          </Text>
-          <Pressable
-            onPress={() => setShowSettings(true)}
-            className="w-9 h-9 items-center justify-center rounded-xl"
-            style={({ pressed }) => ({
-              backgroundColor: pressed ? colors.inputBg : 'transparent',
-            })}
-          >
-            <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
-          </Pressable>
-        </View>
+    <>
+      <ScrollView
+        className="flex-1"
+        style={{ backgroundColor: colors.background }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+      >
+        {/* Hero */}
+        <View className="mt-4">
+          <View className="flex-row items-center justify-between mb-3">
+            <Text className="text-2xl font-bold" style={{ color: colors.text }}>
+              LifeRPG
+            </Text>
+            <Pressable
+              onPress={() => setShowSettings(true)}
+              className="w-9 h-9 items-center justify-center rounded-xl"
+              style={({ pressed }) => ({
+                backgroundColor: pressed ? colors.inputBg : 'transparent',
+              })}
+            >
+              <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
+            </Pressable>
+          </View>
 
-        <View className="flex-row items-center justify-between mb-2">
-          <View
-            className="flex-row items-center px-3 py-1.5 rounded-lg"
-            style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
-          >
-            <Ionicons name="shield-outline" size={14} color={colors.accent} />
-            <Text className="text-sm font-bold ml-1.5" style={{ color: colors.accent }}>
-              Level {user.level}
+          <View className="flex-row items-center justify-between mb-2">
+            <View
+              className="flex-row items-center px-3 py-1.5 rounded-lg"
+              style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+            >
+              <Ionicons name="shield-outline" size={14} color={colors.accent} />
+              <Text className="text-sm font-bold ml-1.5" style={{ color: colors.accent }}>
+                Level {user.level}
+              </Text>
+            </View>
+            <Text className="text-sm" style={{ color: colors.textSecondary }}>
+              {xpIntoLevel} / {required} XP
             </Text>
           </View>
-          <Text className="text-sm" style={{ color: colors.textSecondary }}>
-            {xpIntoLevel} / {required} XP
-          </Text>
+          <ProgressBar progress={xpProgress} height={10} />
         </View>
-        <ProgressBar progress={xpProgress} height={10} />
-      </View>
 
-      {/* Stats */}
-      <View className="mt-8">
-        <View className="flex-row items-center mb-3">
-          <Ionicons name="stats-chart-outline" size={18} color={colors.text} />
-          <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
-            Stats
-          </Text>
+        {/* Stats */}
+        <View className="mt-8">
+          <View className="flex-row items-center mb-3">
+            <Ionicons name="stats-chart-outline" size={18} color={colors.text} />
+            <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
+              Stats
+            </Text>
+          </View>
+          <View className="flex-row flex-wrap gap-2">
+            {STAT_ORDER.map((stat) => (
+              <StatCard key={stat} stat={stat} value={getEffectiveStat(stat)} compact />
+            ))}
+          </View>
         </View>
-        <View className="flex-row flex-wrap gap-2">
-          {STAT_ORDER.map((stat) => (
-            <StatCard key={stat} stat={stat} value={getEffectiveStat(stat)} compact />
-          ))}
-        </View>
-      </View>
 
-      {/* Custom Quests (pending only) */}
-      {pendingCustom.length > 0 && (
+        {/* Custom Quests (pending only) */}
+        {pendingCustom.length > 0 && (
+          <View className="mt-8">
+            <View className="flex-row items-center justify-between mb-3">
+              <View className="flex-row items-center">
+                <Ionicons name="add-circle-outline" size={18} color={colors.text} />
+                <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
+                  Custom Quests
+                </Text>
+              </View>
+              <Text className="text-xs" style={{ color: colors.textTertiary }}>
+                {customCompletedToday}/{MAX_CUSTOM_QUESTS_PER_DAY} today
+              </Text>
+            </View>
+            {pendingCustom.map((quest) => (
+              <CustomQuestCard
+                key={quest.id}
+                quest={quest}
+                onComplete={() => handleCompleteCustom(quest.id)}
+                onDelete={() => { }}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Daily Habits */}
         <View className="mt-8">
           <View className="flex-row items-center justify-between mb-3">
             <View className="flex-row items-center">
-              <Ionicons name="add-circle-outline" size={18} color={colors.text} />
+              <Ionicons name="flash-outline" size={18} color={colors.text} />
               <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
-                Custom Quests
+                Today's Habits
               </Text>
             </View>
-            <Text className="text-xs" style={{ color: colors.textTertiary }}>
-              {customCompletedToday}/{MAX_CUSTOM_QUESTS_PER_DAY} today
-            </Text>
+            {habits.length > 0 && (
+              <Text className="text-xs" style={{ color: colors.textTertiary }}>
+                {habitCompletedCount}/{habits.length}
+              </Text>
+            )}
           </View>
-          {pendingCustom.map((quest) => (
-            <CustomQuestCard
-              key={quest.id}
-              quest={quest}
-              onComplete={() => handleCompleteCustom(quest.id)}
-              onDelete={() => { }}
-            />
-          ))}
-        </View>
-      )}
-
-      {/* Daily Habits */}
-      <View className="mt-8">
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center">
-            <Ionicons name="flash-outline" size={18} color={colors.text} />
-            <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
-              Today's Habits
+          {habits.length === 0 ? (
+            <Text className="text-sm italic" style={{ color: colors.textTertiary }}>
+              No habits yet. Add some in the Quests tab!
             </Text>
-          </View>
-          {habits.length > 0 && (
-            <Text className="text-xs" style={{ color: colors.textTertiary }}>
-              {habitCompletedCount}/{habits.length}
-            </Text>
+          ) : (
+            habits.map((habit) => (
+              <QuestCard
+                key={habit.id}
+                habit={habit}
+                streak={getStreak(habit.id)}
+                completedToday={isCompletedToday(habit.id)}
+                onComplete={() => completeHabit(habit.id)}
+              />
+            ))
           )}
         </View>
-        {habits.length === 0 ? (
-          <Text className="text-sm italic" style={{ color: colors.textTertiary }}>
-            No habits yet. Add some in the Quests tab!
-          </Text>
-        ) : (
-          habits.map((habit) => (
-            <QuestCard
-              key={habit.id}
-              habit={habit}
-              streak={getStreak(habit.id)}
-              completedToday={isCompletedToday(habit.id)}
-              onComplete={() => completeHabit(habit.id)}
-            />
-          ))
-        )}
-      </View>
+      </ScrollView>
 
       {/* Settings */}
       <SettingsModal
         visible={showSettings}
         onClose={() => setShowSettings(false)}
+        onResetTriggered={handleResetTriggered}
       />
-    </ScrollView>
+
+      {/* SAO Reset Animation — lives at screen level so it persists */}
+      <ResetAnimation
+        visible={showResetAnimation}
+        onAnimationComplete={handleAnimationComplete}
+      />
+    </>
   );
 }
