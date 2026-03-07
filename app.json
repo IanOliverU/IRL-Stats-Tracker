@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "irl-stats-tracker",
-    "slug": "irl-stats-tracker",
+    "name": "LifeRPG",
+    "slug": "liferpg",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

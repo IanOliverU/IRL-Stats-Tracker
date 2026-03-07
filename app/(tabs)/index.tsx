@@ -1,98 +1,141 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { ProgressBar } from '@/components/ProgressBar';
+import { QuestCard } from '@/components/QuestCard';
+import { StatCard } from '@/components/StatCard';
+import { ThemePicker } from '@/components/ThemePicker';
+import { useGameHydration } from '@/hooks/useGameHydration';
+import type { StatType } from '@/models';
+import { totalXpForLevel, xpRequiredForLevel } from '@/models';
+import { useGameStore } from '@/store/useGameStore';
+import { useAppColors } from '@/store/useThemeStore';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
 
-export default function HomeScreen() {
+export default function DashboardScreen() {
+  useGameHydration();
+  const user = useGameStore((s) => s.user);
+  const habits = useGameStore((s) => s.habits);
+  const completeHabit = useGameStore((s) => s.completeHabit);
+  const getStreak = useGameStore((s) => s.getStreak);
+  const isCompletedToday = useGameStore((s) => s.isCompletedToday);
+  const getEffectiveStat = useGameStore((s) => s.getEffectiveStat);
+  const _lastAction = useGameStore((s) => s.lastAction);
+
+  const colors = useAppColors();
+  const [showThemePicker, setShowThemePicker] = useState(false);
+
+  if (!user) {
+    return (
+      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.background }}>
+        <Text style={{ color: colors.textSecondary }}>Loading...</Text>
+      </View>
+    );
+  }
+
+  const xpIntoLevel = user.xp - totalXpForLevel(user.level);
+  const required = xpRequiredForLevel(user.level);
+  const xpProgress = required > 0 ? xpIntoLevel / required : 1;
+  const completedCount = habits.filter((h) => isCompletedToday(h.id)).length;
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
+    <ScrollView
+      className="flex-1"
+      style={{ backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+    >
+      {/* Hero */}
+      <View className="mt-4">
+        <View className="flex-row items-center justify-between mb-3">
+          <Text className="text-2xl font-bold" style={{ color: colors.text }}>
+            LifeRPG
+          </Text>
+          <Pressable
+            onPress={() => setShowThemePicker(true)}
+            className="w-9 h-9 items-center justify-center rounded-xl"
+            style={({ pressed }) => ({
+              backgroundColor: pressed ? colors.inputBg : 'transparent',
             })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+          >
+            <Ionicons name="color-palette-outline" size={22} color={colors.textSecondary} />
+          </Pressable>
+        </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <View className="flex-row items-center justify-between mb-2">
+          <View
+            className="flex-row items-center px-3 py-1.5 rounded-lg"
+            style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+          >
+            <Ionicons name="shield-outline" size={14} color={colors.accent} />
+            <Text className="text-sm font-bold ml-1.5" style={{ color: colors.accent }}>
+              Level {user.level}
+            </Text>
+          </View>
+          <Text className="text-sm" style={{ color: colors.textSecondary }}>
+            {xpIntoLevel} / {required} XP
+          </Text>
+        </View>
+        <ProgressBar progress={xpProgress} height={10} />
+        {habits.length > 0 && (
+          <Text className="text-xs mt-2 text-center" style={{ color: colors.textTertiary }}>
+            {completedCount}/{habits.length} quests completed today
+          </Text>
+        )}
+      </View>
+
+      {/* Stats */}
+      <View className="mt-8">
+        <View className="flex-row items-center mb-3">
+          <Ionicons name="stats-chart-outline" size={18} color={colors.text} />
+          <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
+            Stats
+          </Text>
+        </View>
+        <View className="flex-row flex-wrap gap-2">
+          {STAT_ORDER.map((stat) => (
+            <StatCard key={stat} stat={stat} value={getEffectiveStat(stat)} compact />
+          ))}
+        </View>
+      </View>
+
+      {/* Quests */}
+      <View className="mt-8">
+        <View className="flex-row items-center justify-between mb-3">
+          <View className="flex-row items-center">
+            <Ionicons name="flash-outline" size={18} color={colors.text} />
+            <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
+              Today's Quests
+            </Text>
+          </View>
+          {habits.length > 0 && (
+            <Text className="text-xs" style={{ color: colors.textTertiary }}>
+              {completedCount}/{habits.length}
+            </Text>
+          )}
+        </View>
+        {habits.length === 0 ? (
+          <Text className="text-sm italic" style={{ color: colors.textTertiary }}>
+            No habits yet. Add some in the Quests tab!
+          </Text>
+        ) : (
+          habits.map((habit) => (
+            <QuestCard
+              key={habit.id}
+              habit={habit}
+              streak={getStreak(habit.id)}
+              completedToday={isCompletedToday(habit.id)}
+              onComplete={() => completeHabit(habit.id)}
+            />
+          ))
+        )}
+      </View>
+
+      {/* Theme Picker */}
+      <ThemePicker
+        visible={showThemePicker}
+        onClose={() => setShowThemePicker(false)}
+      />
+    </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
