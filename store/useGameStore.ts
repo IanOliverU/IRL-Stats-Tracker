@@ -1,5 +1,6 @@
-import type { CustomQuest, Difficulty, Habit, HabitFrequency, Item, StatType, User } from '@/models';
-import { DIFFICULTY_XP } from '@/models';
+import type { AchievementStatus, CustomQuest, Difficulty, Habit, HabitFrequency, Item, StatType, User } from '@/models';
+import { DIFFICULTY_XP, totalXpForLevel, xpRequiredForLevel } from '@/models';
+import { checkAndUnlockAchievements, getAchievementStatuses } from '@/services/achievementService';
 import {
   getCompletedDayKeysForMonth,
   getCurrentWeekCompletionSummary,
@@ -28,6 +29,7 @@ import {
   completeHabit as doCompleteHabit,
   getStreakForHabit,
   type CustomQuestResult,
+  type QuestCompletionFeedback,
 } from '@/services/habitService';
 import { create } from 'zustand';
 
@@ -36,6 +38,8 @@ interface GameState {
   habits: Habit[];
   items: Item[];
   customQuests: CustomQuest[];
+  achievements: AchievementStatus[];
+  achievementUnlockQueue: AchievementStatus[];
   hydrated: boolean;
   /** Incremented on every mutation to force re-renders of computed selectors */
   lastAction: number;
@@ -43,7 +47,7 @@ interface GameState {
 
 interface GameActions {
   hydrate: () => void;
-  completeHabit: (habitId: string) => void;
+  completeHabit: (habitId: string) => QuestCompletionFeedback | null;
   addHabit: (payload: { title: string; statReward: StatType; xpReward: number; frequency: HabitFrequency }) => void;
   removeHabit: (habitId: string) => void;
   resetData: () => void;
@@ -62,6 +66,8 @@ interface GameActions {
   getCompletedDaysForMonth: (year: number, monthIndex: number) => string[];
   getCurrentWeekSummary: () => WeekCompletionSummary;
   getRecentWeekSummaries: (weeksToInclude: number) => WeekCompletionSummary[];
+  dismissAchievementUnlock: () => void;
+  refreshAchievements: () => void;
 }
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
@@ -69,6 +75,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   habits: [],
   items: [],
   customQuests: [],
+  achievements: [],
+  achievementUnlockQueue: [],
   hydrated: false,
   lastAction: 0,
 
@@ -80,7 +88,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       const habits = dbGetHabits();
       const items = dbGetItems();
       const customQuests = dbGetTodayCustomQuests();
-      set({ user, habits, items, customQuests, hydrated: true });
+      checkAndUnlockAchievements();
+      const achievements = getAchievementStatuses();
+      set({ user, habits, items, customQuests, achievements, hydrated: true });
     } catch (e) {
       console.warn('DB hydrate failed', e);
       set({ hydrated: true });
@@ -90,15 +100,35 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   completeHabit: (habitId: string) => {
     const { habits, lastAction } = get();
     const habit = habits.find((h) => h.id === habitId);
-    if (!habit) return;
-    const completedUser = doCompleteHabit(habitId, habit);
-    if (completedUser) {
+    if (!habit) return null;
+    const result = doCompleteHabit(habitId, habit);
+    if (result) {
       processPendingWeeklyBonus();
+      const newlyUnlockedAchievements = checkAndUnlockAchievements();
+      const achievements = getAchievementStatuses();
       const user = dbGetUser();
       const items = dbGetItems();
       const freshHabits = dbGetHabits();
-      set({ user, items, habits: freshHabits, lastAction: lastAction + 1 });
+      set({
+        user,
+        items,
+        habits: freshHabits,
+        achievements,
+        achievementUnlockQueue: [
+          ...get().achievementUnlockQueue,
+          ...newlyUnlockedAchievements,
+        ],
+        lastAction: lastAction + 1,
+      });
+
+      const effectiveUser = user ?? result.user;
+      return {
+        ...result.feedback,
+        xpIntoLevel: effectiveUser.xp - totalXpForLevel(effectiveUser.level),
+        xpRequired: xpRequiredForLevel(effectiveUser.level),
+      };
     }
+    return null;
   },
 
   addHabit: (payload) => {
@@ -110,8 +140,18 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       xpReward: payload.xpReward,
       frequency: payload.frequency,
     });
+    const newlyUnlockedAchievements = checkAndUnlockAchievements();
+    const achievements = getAchievementStatuses();
     const habits = dbGetHabits();
-    set({ habits, lastAction: get().lastAction + 1 });
+    set({
+      habits,
+      achievements,
+      achievementUnlockQueue: [
+        ...get().achievementUnlockQueue,
+        ...newlyUnlockedAchievements,
+      ],
+      lastAction: get().lastAction + 1,
+    });
   },
 
   removeHabit: (habitId: string) => {
@@ -126,7 +166,16 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const habits = dbGetHabits();
     const items = dbGetItems();
     const customQuests = dbGetTodayCustomQuests();
-    set({ user, habits, items, customQuests, lastAction: get().lastAction + 1 });
+    const achievements = getAchievementStatuses();
+    set({
+      user,
+      habits,
+      items,
+      customQuests,
+      achievements,
+      achievementUnlockQueue: [],
+      lastAction: get().lastAction + 1,
+    });
   },
 
   // ─── Custom Quest Actions ─────────────────────────────
@@ -143,21 +192,54 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       xpReward,
       createdAt: now,
     });
+    const newlyUnlockedAchievements = checkAndUnlockAchievements();
+    const achievements = getAchievementStatuses();
     const customQuests = dbGetTodayCustomQuests();
-    set({ customQuests, lastAction: get().lastAction + 1 });
+    set({
+      customQuests,
+      achievements,
+      achievementUnlockQueue: [
+        ...get().achievementUnlockQueue,
+        ...newlyUnlockedAchievements,
+      ],
+      lastAction: get().lastAction + 1,
+    });
   },
 
   completeCustomQuest: (questId: string) => {
     const quest = get().customQuests.find((q) => q.id === questId);
     if (!quest) return { success: false as const, reason: 'daily_limit' as const, message: 'Quest not found' };
 
-    const result = doCompleteCustomQuest(quest);
+    let result = doCompleteCustomQuest(quest);
     if (result.success) {
       processPendingWeeklyBonus();
+      const newlyUnlockedAchievements = checkAndUnlockAchievements();
+      const achievements = getAchievementStatuses();
       const user = dbGetUser();
       const items = dbGetItems();
       const customQuests = dbGetTodayCustomQuests();
-      set({ user, items, customQuests, lastAction: get().lastAction + 1 });
+      set({
+        user,
+        items,
+        customQuests,
+        achievements,
+        achievementUnlockQueue: [
+          ...get().achievementUnlockQueue,
+          ...newlyUnlockedAchievements,
+        ],
+        lastAction: get().lastAction + 1,
+      });
+
+      if (user) {
+        result = {
+          success: true,
+          feedback: {
+            ...result.feedback,
+            xpIntoLevel: user.xp - totalXpForLevel(user.level),
+            xpRequired: xpRequiredForLevel(user.level),
+          },
+        };
+      }
     }
     return result;
   },
@@ -181,6 +263,20 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const user = dbGetUser();
     const items = dbGetItems();
     set({ user, items, lastAction: get().lastAction + 1 });
+  },
+
+  dismissAchievementUnlock: () => {
+    const queue = get().achievementUnlockQueue;
+    if (queue.length === 0) return;
+    set({
+      achievementUnlockQueue: queue.slice(1),
+      lastAction: get().lastAction + 1,
+    });
+  },
+
+  refreshAchievements: () => {
+    const achievements = getAchievementStatuses();
+    set({ achievements, lastAction: get().lastAction + 1 });
   },
 
   getCompletedDaysForMonth: (year: number, monthIndex: number) =>

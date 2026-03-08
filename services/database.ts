@@ -1,4 +1,4 @@
-import type { CustomQuest, Habit, HabitLog, Item, StatType, User } from '@/models';
+import type { AchievementId, CustomQuest, Habit, HabitLog, Item, StatType, User } from '@/models';
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'liferpg.db';
@@ -77,12 +77,17 @@ function initSchema(database: SQLite.SQLiteDatabase) {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS achievement_unlock (
+      achievementId TEXT PRIMARY KEY,
+      unlockedAt TEXT NOT NULL
+    );
   `);
 
   // Migration: add name column if not present
   try {
     database.runSync('ALTER TABLE user ADD COLUMN name TEXT');
-  } catch (_e) {
+  } catch {
     // Column already exists — ignore
   }
 
@@ -311,6 +316,167 @@ export function dbSetSetting(key: string, value: string): void {
   );
 }
 
+// --- Achievements ---
+export function dbGetUnlockedAchievements(): { achievementId: AchievementId; unlockedAt: string }[] {
+  const database = getDb();
+  const rows = database.getAllSync<{ achievementId: AchievementId; unlockedAt: string }>(
+    'SELECT achievementId, unlockedAt FROM achievement_unlock ORDER BY unlockedAt ASC'
+  );
+  return rows ?? [];
+}
+
+export function dbUnlockAchievement(achievementId: AchievementId): void {
+  const database = getDb();
+  const now = new Date().toISOString();
+  database.runSync(
+    'INSERT OR IGNORE INTO achievement_unlock (achievementId, unlockedAt) VALUES (?, ?)',
+    [achievementId, now]
+  );
+}
+
+/** Total completed quests across recurring habits and custom quests. */
+export function dbGetTotalCompletedQuestCount(): number {
+  const database = getDb();
+  const row = database.getFirstSync<{ total: number }>(
+    `
+      SELECT
+        (SELECT COUNT(*) FROM habit_log) +
+        (SELECT COUNT(*) FROM custom_quest WHERE completedAt IS NOT NULL) AS total
+    `
+  );
+  return row?.total ?? 0;
+}
+
+/** Completed quest count for a stat across habits + custom quests. */
+export function dbGetCompletedQuestCountForStat(stat: StatType): number {
+  const database = getDb();
+  const row = database.getFirstSync<{ total: number }>(
+    `
+      SELECT
+        (SELECT COUNT(*)
+         FROM habit_log hl
+         INNER JOIN habit h ON h.id = hl.habitId
+         WHERE h.statReward = ?) +
+        (SELECT COUNT(*)
+         FROM custom_quest cq
+         WHERE cq.completedAt IS NOT NULL AND cq.statReward = ?) AS total
+    `,
+    [stat, stat]
+  );
+  return row?.total ?? 0;
+}
+
+/** Distinct UTC quest completion day keys (YYYY-MM-DD) across all quest types. */
+export function dbGetAllCompletedQuestDayKeys(): string[] {
+  const database = getDb();
+  const rows = database.getAllSync<{ day: string }>(
+    `
+      SELECT day
+      FROM (
+        SELECT SUBSTR(completedAt, 1, 10) AS day FROM habit_log
+        UNION
+        SELECT SUBSTR(completedAt, 1, 10) AS day FROM custom_quest WHERE completedAt IS NOT NULL
+      )
+      ORDER BY day ASC
+    `
+  );
+  return (rows ?? []).map((row) => row.day);
+}
+
+export interface CompletedQuestEvent {
+  completedAt: string;
+  dayKey: string;
+  statReward: StatType;
+  xpReward: number;
+  source: 'habit' | 'custom';
+  habitId: string | null;
+}
+
+/** Full quest completion timeline across habits and custom quests. */
+export function dbGetCompletedQuestEvents(): CompletedQuestEvent[] {
+  const database = getDb();
+  const rows = database.getAllSync<{
+    completedAt: string;
+    dayKey: string;
+    statReward: StatType;
+    xpReward: number;
+    source: string;
+    habitId: string | null;
+  }>(
+    `
+      SELECT
+        hl.completedAt AS completedAt,
+        SUBSTR(hl.completedAt, 1, 10) AS dayKey,
+        h.statReward AS statReward,
+        (h.xpReward + hl.bonusXp) AS xpReward,
+        'habit' AS source,
+        hl.habitId AS habitId
+      FROM habit_log hl
+      INNER JOIN habit h ON h.id = hl.habitId
+      UNION ALL
+      SELECT
+        cq.completedAt AS completedAt,
+        SUBSTR(cq.completedAt, 1, 10) AS dayKey,
+        cq.statReward AS statReward,
+        cq.xpReward AS xpReward,
+        'custom' AS source,
+        NULL AS habitId
+      FROM custom_quest cq
+      WHERE cq.completedAt IS NOT NULL
+      ORDER BY completedAt ASC
+    `
+  );
+
+  return (rows ?? []).map((row) => ({
+    completedAt: row.completedAt,
+    dayKey: row.dayKey,
+    statReward: row.statReward,
+    xpReward: row.xpReward,
+    source: row.source === 'habit' ? 'habit' : 'custom',
+    habitId: row.habitId,
+  }));
+}
+
+export function dbGetCustomHabitCount(): number {
+  const database = getDb();
+  const row = database.getFirstSync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM habit WHERE id LIKE 'habit_%'"
+  );
+  return row?.count ?? 0;
+}
+
+export function dbGetCustomQuestCreatedCount(): number {
+  const database = getDb();
+  const row = database.getFirstSync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM custom_quest'
+  );
+  return row?.count ?? 0;
+}
+
+export function dbGetUnlockedItemCount(): number {
+  const database = getDb();
+  const row = database.getFirstSync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM item WHERE unlockedAt IS NOT NULL'
+  );
+  return row?.count ?? 0;
+}
+
+export function dbGetTotalItemCount(): number {
+  const database = getDb();
+  const row = database.getFirstSync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM item'
+  );
+  return row?.count ?? 0;
+}
+
+export function dbGetDailyHabitIds(): string[] {
+  const database = getDb();
+  const rows = database.getAllSync<{ id: string }>(
+    "SELECT id FROM habit WHERE frequency = 'daily'"
+  );
+  return (rows ?? []).map((row) => row.id);
+}
+
 // --- Reset ---
 /** Wipes all game data and re-seeds defaults. Preserves settings. */
 export function dbResetAllData(): void {
@@ -321,6 +487,7 @@ export function dbResetAllData(): void {
     DELETE FROM item;
     DELETE FROM user;
     DELETE FROM custom_quest;
+    DELETE FROM achievement_unlock;
     DELETE FROM settings WHERE key LIKE 'weekly_bonus_processed_%';
   `);
 

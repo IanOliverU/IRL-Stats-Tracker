@@ -1,5 +1,8 @@
+import { AchievementUnlockPopup } from '@/components/AchievementUnlockPopup';
+import { AchievementsModal } from '@/components/AchievementsModal';
 import { CustomQuestCard } from '@/components/CustomQuestCard';
 import { ProgressBar } from '@/components/ProgressBar';
+import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
 import { QuestCard } from '@/components/QuestCard';
 import { QuestStartAnimation } from '@/components/QuestStartAnimation';
 import { ResetAnimation } from '@/components/ResetAnimation';
@@ -8,9 +11,11 @@ import { StatCard } from '@/components/StatCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
 import type { StatType } from '@/models';
 import { MAX_CUSTOM_QUESTS_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '@/models';
+import type { QuestCompletionFeedback as QuestCompletionFeedbackData } from '@/services/habitService';
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -33,16 +38,21 @@ export default function DashboardScreen() {
   const items = useGameStore((s) => s.items);
   const habits = useGameStore((s) => s.habits);
   const customQuests = useGameStore((s) => s.customQuests);
+  const achievements = useGameStore((s) => s.achievements);
+  const achievementUnlockQueue = useGameStore((s) => s.achievementUnlockQueue);
   const completeHabit = useGameStore((s) => s.completeHabit);
   const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
+  const dismissAchievementUnlock = useGameStore((s) => s.dismissAchievementUnlock);
   const resetData = useGameStore((s) => s.resetData);
   const setUserName = useGameStore((s) => s.setUserName);
   const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
   const getCustomQuestsCompletedToday = useGameStore((s) => s.getCustomQuestsCompletedToday);
   const refreshUser = useGameStore((s) => s.refreshUser);
+  const refreshAchievements = useGameStore((s) => s.refreshAchievements);
 
   const colors = useAppColors();
+  const isFocused = useIsFocused();
   const effectiveStats = useMemo<Record<StatType, number>>(() => {
     const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
     for (const item of items) {
@@ -58,6 +68,7 @@ export default function DashboardScreen() {
     };
   }, [items, user?.cha, user?.int, user?.str, user?.vit, user?.wis]);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAchievements, setShowAchievements] = useState(false);
   const [showResetAnimation, setShowResetAnimation] = useState(false);
 
   // Welcome / name modal state
@@ -65,13 +76,16 @@ export default function DashboardScreen() {
   const [nameInput, setNameInput] = useState('');
   const [showQuestStart, setShowQuestStart] = useState(false);
   const [questStartName, setQuestStartName] = useState('');
+  const [completionFeedback, setCompletionFeedback] = useState<QuestCompletionFeedbackData | null>(null);
+  const [showCompletionFeedback, setShowCompletionFeedback] = useState(false);
 
   // Re-read user from DB every time this tab comes into focus
   // so level / stats always reflect the latest data.
   useFocusEffect(
     useCallback(() => {
       refreshUser();
-    }, [refreshUser])
+      refreshAchievements();
+    }, [refreshAchievements, refreshUser])
   );
 
   // Show name modal if user has no name set
@@ -121,10 +135,21 @@ export default function DashboardScreen() {
     const result = completeCustomQuestAction(questId);
     if (!result.success) {
       Alert.alert('Limit Reached', result.message);
+      return;
     }
+    setCompletionFeedback(result.feedback);
+    setShowCompletionFeedback(true);
+  };
+
+  const handleCompleteHabit = (habitId: string) => {
+    const feedback = completeHabit(habitId);
+    if (!feedback) return;
+    setCompletionFeedback(feedback);
+    setShowCompletionFeedback(true);
   };
 
   const displayName = user.name || 'LifeRPG';
+  const activeAchievementUnlock = achievementUnlockQueue[0] ?? null;
 
   return (
     <>
@@ -141,15 +166,26 @@ export default function DashboardScreen() {
                 {displayName}
               </Text>
             </View>
-            <Pressable
-              onPress={() => setShowSettings(true)}
-              className="w-9 h-9 items-center justify-center rounded-xl"
-              style={({ pressed }) => ({
-                backgroundColor: pressed ? colors.inputBg : 'transparent',
-              })}
-            >
-              <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
-            </Pressable>
+            <View className="flex-row items-center gap-2">
+              <Pressable
+                onPress={() => setShowAchievements(true)}
+                className="w-9 h-9 items-center justify-center rounded-xl"
+                style={({ pressed }) => ({
+                  backgroundColor: pressed ? colors.inputBg : 'transparent',
+                })}
+              >
+                <Ionicons name="trophy-outline" size={20} color={colors.warning} />
+              </Pressable>
+              <Pressable
+                onPress={() => setShowSettings(true)}
+                className="w-9 h-9 items-center justify-center rounded-xl"
+                style={({ pressed }) => ({
+                  backgroundColor: pressed ? colors.inputBg : 'transparent',
+                })}
+              >
+                <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
+              </Pressable>
+            </View>
           </View>
 
           <View className="flex-row items-center justify-between mb-2">
@@ -235,12 +271,26 @@ export default function DashboardScreen() {
                 habit={habit}
                 streak={getStreak(habit.id)}
                 completedToday={isCompletedToday(habit.id)}
-                onComplete={() => completeHabit(habit.id)}
+                onComplete={() => handleCompleteHabit(habit.id)}
               />
             ))
           )}
         </View>
       </ScrollView>
+
+      <QuestCompletionFeedback
+        visible={showCompletionFeedback}
+        feedback={completionFeedback}
+        onHide={() => {
+          setShowCompletionFeedback(false);
+          setCompletionFeedback(null);
+        }}
+      />
+
+      <AchievementUnlockPopup
+        achievement={isFocused ? activeAchievementUnlock : null}
+        onHide={dismissAchievementUnlock}
+      />
 
       {/* Welcome / Name Modal */}
       <Modal visible={showNameModal} animationType="fade" transparent>
@@ -322,6 +372,12 @@ export default function DashboardScreen() {
         visible={showSettings}
         onClose={() => setShowSettings(false)}
         onResetTriggered={handleResetTriggered}
+      />
+
+      <AchievementsModal
+        visible={showAchievements}
+        achievements={achievements}
+        onClose={() => setShowAchievements(false)}
       />
 
       {/* SAO Reset Animation */}

@@ -1,4 +1,6 @@
+import { AchievementUnlockPopup } from '@/components/AchievementUnlockPopup';
 import { CustomQuestCard } from '@/components/CustomQuestCard';
+import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
 import { QuestCard } from '@/components/QuestCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
 import type { Difficulty, HabitFrequency, StatType } from '@/models';
@@ -9,9 +11,11 @@ import {
   MAX_CUSTOM_QUESTS_PER_DAY,
   STAT_LABELS,
 } from '@/models';
+import type { QuestCompletionFeedback as QuestCompletionFeedbackData } from '@/services/habitService';
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -41,18 +45,20 @@ export default function HabitsScreen() {
   useGameHydration();
   const habits = useGameStore((s) => s.habits);
   const customQuests = useGameStore((s) => s.customQuests);
+  const achievementUnlockQueue = useGameStore((s) => s.achievementUnlockQueue);
   const completeHabit = useGameStore((s) => s.completeHabit);
   const addHabit = useGameStore((s) => s.addHabit);
   const removeHabit = useGameStore((s) => s.removeHabit);
   const addCustomQuest = useGameStore((s) => s.addCustomQuest);
   const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
+  const dismissAchievementUnlock = useGameStore((s) => s.dismissAchievementUnlock);
   const deleteCustomQuest = useGameStore((s) => s.deleteCustomQuest);
   const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
   const getCustomQuestsCompletedToday = useGameStore((s) => s.getCustomQuestsCompletedToday);
-  const _lastAction = useGameStore((s) => s.lastAction);
 
   const colors = useAppColors();
+  const isFocused = useIsFocused();
 
   // Habit modal state
   const [habitModalVisible, setHabitModalVisible] = useState(false);
@@ -66,6 +72,8 @@ export default function HabitsScreen() {
   const [customTitle, setCustomTitle] = useState('');
   const [customStat, setCustomStat] = useState<StatType>('STR');
   const [customDifficulty, setCustomDifficulty] = useState<Difficulty>('medium');
+  const [completionFeedback, setCompletionFeedback] = useState<QuestCompletionFeedbackData | null>(null);
+  const [showCompletionFeedback, setShowCompletionFeedback] = useState(false);
 
   const handleAddHabit = () => {
     const t = title.trim();
@@ -97,7 +105,17 @@ export default function HabitsScreen() {
     const result = completeCustomQuestAction(questId);
     if (!result.success) {
       Alert.alert('Limit Reached', result.message);
+      return;
     }
+    setCompletionFeedback(result.feedback);
+    setShowCompletionFeedback(true);
+  };
+
+  const handleCompleteHabit = (habitId: string) => {
+    const feedback = completeHabit(habitId);
+    if (!feedback) return;
+    setCompletionFeedback(feedback);
+    setShowCompletionFeedback(true);
   };
 
   const handleDeleteCustomQuest = (questId: string, questTitle: string) => {
@@ -118,6 +136,7 @@ export default function HabitsScreen() {
   const customCompletedToday = getCustomQuestsCompletedToday();
   const pendingCustomQuests = customQuests.filter((q) => !q.completedAt);
   const completedCustomQuests = customQuests.filter((q) => !!q.completedAt);
+  const activeAchievementUnlock = achievementUnlockQueue[0] ?? null;
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
@@ -252,13 +271,27 @@ export default function HabitsScreen() {
                 habit={habit}
                 streak={getStreak(habit.id)}
                 completedToday={isCompletedToday(habit.id)}
-                onComplete={() => completeHabit(habit.id)}
+                onComplete={() => handleCompleteHabit(habit.id)}
                 onLongPress={() => handleLongPressHabit(habit.id, habit.title)}
               />
             ))
           )}
         </View>
       </ScrollView>
+
+      <QuestCompletionFeedback
+        visible={showCompletionFeedback}
+        feedback={completionFeedback}
+        onHide={() => {
+          setShowCompletionFeedback(false);
+          setCompletionFeedback(null);
+        }}
+      />
+
+      <AchievementUnlockPopup
+        achievement={isFocused ? activeAchievementUnlock : null}
+        onHide={dismissAchievementUnlock}
+      />
 
       {/* ─── Add Habit Modal ─────────────────────────────── */}
       <Modal visible={habitModalVisible} animationType="slide" transparent>

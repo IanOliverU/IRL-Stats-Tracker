@@ -15,6 +15,19 @@ import {
 const STREAK_BONUS_PER_DAY = 5;
 const MAX_STREAK_BONUS = 25;
 
+export interface QuestCompletionFeedback {
+  stat: StatType;
+  xpGained: number;
+  xpIntoLevel: number;
+  xpRequired: number;
+  streakDays?: number;
+}
+
+export interface HabitCompletionResult {
+  user: User;
+  feedback: QuestCompletionFeedback;
+}
+
 function getStartOfDay(date: Date): string {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -61,7 +74,7 @@ function getStreakBonusXp(streakCount: number): number {
 }
 
 /** Complete a habit: add log, apply XP + stat, level up if needed, check item unlocks. */
-export function completeHabit(habitId: string, habit: Habit): User | null {
+export function completeHabit(habitId: string, habit: Habit): HabitCompletionResult | null {
   const user = dbGetUser();
   if (!user) return null;
 
@@ -97,7 +110,19 @@ export function completeHabit(habitId: string, habit: Habit): User | null {
   });
 
   checkItemUnlocks();
-  return dbGetUser();
+  const updatedUser = dbGetUser();
+  if (!updatedUser) return null;
+
+  return {
+    user: updatedUser,
+    feedback: {
+      stat: habit.statReward,
+      xpGained: habit.xpReward + bonusXp,
+      xpIntoLevel: updatedUser.xp - totalXpForLevel(updatedUser.level),
+      xpRequired: xpRequiredForLevel(updatedUser.level),
+      streakDays: nextStreak,
+    },
+  };
 }
 
 /** Check item unlock conditions based on current user stats and habit logs. */
@@ -127,7 +152,7 @@ export function getEffectiveStat(user: User, stat: StatType): number {
 // ─── Custom Quest Completion ────────────────────────────
 
 export type CustomQuestResult =
-  | { success: true }
+  | { success: true; feedback: QuestCompletionFeedback }
   | { success: false; reason: 'daily_limit' | 'stat_limit'; message: string };
 
 /** Complete a custom quest with safety limit checks. */
@@ -157,7 +182,17 @@ export function completeCustomQuest(quest: CustomQuest): CustomQuestResult {
 
   // Award XP and stat point
   const user = dbGetUser();
-  if (!user) return { success: true };
+  if (!user) {
+    return {
+      success: true,
+      feedback: {
+        stat: quest.statReward,
+        xpGained: quest.xpReward,
+        xpIntoLevel: 0,
+        xpRequired: 0,
+      },
+    };
+  }
 
   const statKey = quest.statReward.toLowerCase() as keyof Pick<User, 'str' | 'int' | 'wis' | 'cha' | 'vit'>;
   const currentStat = user[statKey] as number;
@@ -179,5 +214,26 @@ export function completeCustomQuest(quest: CustomQuest): CustomQuestResult {
   });
 
   checkItemUnlocks();
-  return { success: true };
+  const updatedUser = dbGetUser();
+  if (!updatedUser) {
+    return {
+      success: true,
+      feedback: {
+        stat: quest.statReward,
+        xpGained: quest.xpReward,
+        xpIntoLevel: 0,
+        xpRequired: 0,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    feedback: {
+      stat: quest.statReward,
+      xpGained: quest.xpReward,
+      xpIntoLevel: updatedUser.xp - totalXpForLevel(updatedUser.level),
+      xpRequired: xpRequiredForLevel(updatedUser.level),
+    },
+  };
 }
