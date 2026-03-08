@@ -1,9 +1,26 @@
-import type { AchievementId, CustomQuest, Habit, HabitLog, Item, StatType, User } from '@/models';
+import {
+  ITEM_DEFINITIONS,
+  type AchievementId,
+  type CustomQuest,
+  type Habit,
+  type HabitLog,
+  type Item,
+  type ItemDefinition,
+  type StatType,
+  type User,
+} from '@/models';
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'liferpg.db';
 
 let db: SQLite.SQLiteDatabase | null = null;
+
+function insertItemDefinition(database: SQLite.SQLiteDatabase, item: ItemDefinition, createdAt: string): void {
+  database.runSync(
+    'INSERT INTO item (id, name, statBonus, bonusAmount, unlockCondition, unlockedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [item.id, item.name, item.stat, 0, item.unlockLabel, null, createdAt]
+  );
+}
 
 export function getDb(): SQLite.SQLiteDatabase {
   if (!db) {
@@ -124,19 +141,27 @@ function initSchema(database: SQLite.SQLiteDatabase) {
   const itemRow = database.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM item');
   if (itemRow && itemRow.count === 0) {
     const now = new Date().toISOString();
-    const items: [string, string, string, number, string, string][] = [
-      ['running-shoes', 'Running Shoes', 'STR', 2, 'Complete 7 STR habits', now],
-      ['laptop', 'Laptop', 'INT', 2, 'Complete 7 INT habits', now],
-      ['bookmark', 'Bookmark', 'WIS', 2, 'Complete 7 WIS habits', now],
-      ['name-tag', 'Name Tag', 'CHA', 2, 'Complete 5 CHA habits', now],
-      ['water-bottle', 'Water Bottle', 'VIT', 2, 'Complete 7 VIT habits', now],
-    ];
-    for (const [id, name, stat, amount, condition, createdAt] of items) {
-      database.runSync(
-        'INSERT INTO item (id, name, statBonus, bonusAmount, unlockCondition, unlockedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [id, name, stat, amount, condition, null, createdAt]
-      );
+    for (const item of ITEM_DEFINITIONS) {
+      insertItemDefinition(database, item, now);
     }
+  }
+
+  // Migration: ensure any newly added catalog items are present.
+  const now = new Date().toISOString();
+  for (const item of ITEM_DEFINITIONS) {
+    const exists = database.getFirstSync<{ count: number }>(
+      'SELECT COUNT(*) as count FROM item WHERE id = ?',
+      [item.id]
+    );
+    if ((exists?.count ?? 0) > 0) {
+      // Keep unlockedAt, but normalize catalog fields for consistent effects/UI.
+      database.runSync(
+        'UPDATE item SET name = ?, statBonus = ?, bonusAmount = ?, unlockCondition = ? WHERE id = ?',
+        [item.name, item.stat, 0, item.unlockLabel, item.id]
+      );
+      continue;
+    }
+    insertItemDefinition(database, item, now);
   }
 }
 
@@ -513,19 +538,9 @@ export function dbResetAllData(): void {
     );
   }
 
-  // Re-seed default items
-  const items: [string, string, string, number, string, string][] = [
-    ['running-shoes', 'Running Shoes', 'STR', 2, 'Complete 7 STR habits', now],
-    ['laptop', 'Laptop', 'INT', 2, 'Complete 7 INT habits', now],
-    ['bookmark', 'Bookmark', 'WIS', 2, 'Complete 7 WIS habits', now],
-    ['name-tag', 'Name Tag', 'CHA', 2, 'Complete 5 CHA habits', now],
-    ['water-bottle', 'Water Bottle', 'VIT', 2, 'Complete 7 VIT habits', now],
-  ];
-  for (const [id, name, stat, amount, condition, createdAt] of items) {
-    database.runSync(
-      'INSERT INTO item (id, name, statBonus, bonusAmount, unlockCondition, unlockedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, name, stat, amount, condition, null, createdAt]
-    );
+  // Re-seed default items (MVP catalog)
+  for (const item of ITEM_DEFINITIONS) {
+    insertItemDefinition(database, item, now);
   }
 }
 
@@ -576,6 +591,28 @@ export function dbCountCompletedCustomQuestsToday(): number {
     [start, end]
   );
   return row?.count ?? 0;
+}
+
+/** Whether at least one quest for a given stat has been completed today. */
+export function dbHasCompletedQuestForStatToday(stat: StatType): boolean {
+  const database = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const start = `${today}T00:00:00.000Z`;
+  const end = `${today}T23:59:59.999Z`;
+  const row = database.getFirstSync<{ count: number }>(
+    `
+      SELECT
+        (SELECT COUNT(*)
+         FROM habit_log hl
+         INNER JOIN habit h ON h.id = hl.habitId
+         WHERE h.statReward = ? AND hl.completedAt >= ? AND hl.completedAt <= ?) +
+        (SELECT COUNT(*)
+         FROM custom_quest cq
+         WHERE cq.completedAt IS NOT NULL AND cq.statReward = ? AND cq.completedAt >= ? AND cq.completedAt <= ?) AS count
+    `,
+    [stat, start, end, stat, start, end]
+  );
+  return (row?.count ?? 0) > 0;
 }
 
 /** Total XP earned from custom quests for a given stat today */

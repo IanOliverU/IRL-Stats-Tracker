@@ -1,16 +1,8 @@
-import type { Item, StatType } from '@/models';
+import { getItemDefinitionById, type Item } from '@/models';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Text, View } from 'react-native';
-
-const STAT_ICONS: Record<StatType, keyof typeof Ionicons.glyphMap> = {
-  STR: 'barbell-outline',
-  INT: 'bulb-outline',
-  WIS: 'book-outline',
-  CHA: 'people-outline',
-  VIT: 'heart-outline',
-};
 
 type ItemCardProps = {
   item: Item;
@@ -19,7 +11,11 @@ type ItemCardProps = {
 export function ItemCard({ item }: ItemCardProps) {
   const colors = useAppColors();
   const unlocked = !!item.unlockedAt;
-  const icon = STAT_ICONS[item.statBonus] || 'cube-outline';
+  const definition = getItemDefinitionById(item.id);
+  const icon = (definition?.icon as keyof typeof Ionicons.glyphMap | undefined) ?? 'cube-outline';
+  const effectLabel = definition?.effectLabel ?? (item.bonusAmount > 0 ? `+${item.bonusAmount} ${item.statBonus}` : 'Inventory reward');
+  const flavor = definition?.flavor ?? item.unlockCondition;
+  const category = definition?.category ?? 'stat';
 
   return (
     <View
@@ -54,7 +50,7 @@ export function ItemCard({ item }: ItemCardProps) {
             style={{ backgroundColor: colors.success + '18' }}
           >
             <Text className="text-xs font-semibold" style={{ color: colors.success }}>
-              +{item.bonusAmount} {item.statBonus}
+              {category.toUpperCase()}
             </Text>
           </View>
         ) : (
@@ -71,7 +67,14 @@ export function ItemCard({ item }: ItemCardProps) {
         numberOfLines={2}
         style={{ color: colors.textSecondary }}
       >
-        {item.unlockCondition}
+        {effectLabel}
+      </Text>
+      <Text
+        className="text-[11px] ml-11 mt-1"
+        numberOfLines={2}
+        style={{ color: colors.textTertiary }}
+      >
+        {unlocked ? flavor : item.unlockCondition}
       </Text>
     </View>
   );

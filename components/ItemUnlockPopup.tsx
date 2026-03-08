@@ -1,25 +1,27 @@
-import type { AchievementStatus } from '@/models';
+import { getItemDefinitionById } from '@/models';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
 import { Animated, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type AchievementUnlockPopupProps = {
-  achievement: AchievementStatus | null;
+type ItemUnlockPopupProps = {
+  itemId: string | null;
   onHide: () => void;
 };
 
-export function AchievementUnlockPopup({ achievement, onHide }: AchievementUnlockPopupProps) {
+export function ItemUnlockPopup({ itemId, onHide }: ItemUnlockPopupProps) {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
+  const item = itemId ? getItemDefinitionById(itemId) : null;
   const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(-10)).current;
+  const translateY = useRef(new Animated.Value(-12)).current;
 
   useEffect(() => {
-    if (!achievement) return;
+    if (!item) return;
+
     opacity.setValue(0);
-    translateY.setValue(-10);
+    translateY.setValue(-12);
 
     Animated.parallel([
       Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
@@ -31,12 +33,12 @@ export function AchievementUnlockPopup({ achievement, onHide }: AchievementUnloc
         Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }),
         Animated.timing(translateY, { toValue: -6, duration: 220, useNativeDriver: true }),
       ]).start(onHide);
-    }, 2300);
+    }, 2500);
 
     return () => clearTimeout(timer);
-  }, [achievement, onHide, opacity, translateY]);
+  }, [item, onHide, opacity, translateY]);
 
-  if (!achievement) return null;
+  if (!item) return null;
 
   return (
     <View
@@ -50,7 +52,7 @@ export function AchievementUnlockPopup({ achievement, onHide }: AchievementUnloc
           transform: [{ translateY }],
           backgroundColor: colors.card,
           borderWidth: 1,
-          borderColor: colors.warning + '66',
+          borderColor: colors.accent + '66',
           shadowColor: '#000',
           shadowOpacity: 0.18,
           shadowRadius: 8,
@@ -59,16 +61,16 @@ export function AchievementUnlockPopup({ achievement, onHide }: AchievementUnloc
         }}
       >
         <View className="flex-row items-center mb-1">
-          <Ionicons name="trophy-outline" size={18} color={colors.warning} />
-          <Text className="text-sm font-bold ml-1.5" style={{ color: colors.warning }}>
-            Achievement Unlocked
+          <Ionicons name="gift-outline" size={18} color={colors.accent} />
+          <Text className="text-sm font-bold ml-1.5" style={{ color: colors.accent }}>
+            Reward Unlocked
           </Text>
         </View>
         <Text className="text-base font-semibold" style={{ color: colors.text }}>
-          {achievement.title}
+          {item.name}
         </Text>
         <Text className="text-xs mt-0.5" style={{ color: colors.textSecondary }}>
-          &quot;{achievement.description}&quot;
+          {item.effectLabel}
         </Text>
       </Animated.View>
     </View>

@@ -49,6 +49,294 @@ export interface Item {
   createdAt: string;
 }
 
+export type ItemCategory = 'stat' | 'cosmetic' | 'utility';
+export type ItemSource = 'any' | 'habit' | 'custom';
+export type ItemEffectType =
+  | 'stat_xp_percent'
+  | 'first_stat_quest_flat_xp'
+  | 'night_stat_flat_xp'
+  | 'instant_xp_once'
+  | 'streak_shield'
+  | 'cosmetic';
+
+export interface ItemUnlockRule {
+  level?: number;
+  statQuestCount?: {
+    stat: StatType;
+    count: number;
+  };
+  mode?: 'level_or_stat' | 'level_only' | 'stat_only';
+}
+
+export interface ItemEffect {
+  type: ItemEffectType;
+  stat?: StatType;
+  percent?: number;
+  flatXp?: number;
+  source?: ItemSource;
+  instantXp?: number;
+}
+
+export interface ItemDefinition {
+  id: string;
+  name: string;
+  category: ItemCategory;
+  stat: StatType;
+  icon: string;
+  unlockRule: ItemUnlockRule;
+  unlockLabel: string;
+  effectLabel: string;
+  flavor: string;
+  effect: ItemEffect;
+}
+
+export const ITEM_DEFINITIONS: ItemDefinition[] = [
+  {
+    id: 'gym-gloves',
+    name: 'Gym Gloves',
+    category: 'stat',
+    stat: 'STR',
+    icon: 'barbell-outline',
+    unlockRule: { level: 2, mode: 'level_only' },
+    unlockLabel: 'Reach Level 2',
+    effectLabel: '+5% STR XP from strength quests',
+    flavor: 'Grip the grind.',
+    effect: { type: 'stat_xp_percent', stat: 'STR', percent: 5, source: 'any' },
+  },
+  {
+    id: 'running-shoes',
+    name: 'Running Shoes',
+    category: 'stat',
+    stat: 'STR',
+    icon: 'walk-outline',
+    unlockRule: { level: 3, statQuestCount: { stat: 'STR', count: 7 }, mode: 'level_or_stat' },
+    unlockLabel: 'Complete 7 STR quests or reach Level 3',
+    effectLabel: '+5% STR XP on habit quests',
+    flavor: 'Built for momentum.',
+    effect: { type: 'stat_xp_percent', stat: 'STR', percent: 5, source: 'habit' },
+  },
+  {
+    id: 'protein-shaker',
+    name: 'Protein Shaker',
+    category: 'stat',
+    stat: 'STR',
+    icon: 'flask-outline',
+    unlockRule: { level: 5, mode: 'level_only' },
+    unlockLabel: 'Reach Level 5',
+    effectLabel: '+10 STR XP on first STR quest of the day',
+    flavor: 'Fuel for the build.',
+    effect: { type: 'first_stat_quest_flat_xp', stat: 'STR', flatXp: 10, source: 'any' },
+  },
+  {
+    id: 'laptop',
+    name: 'Laptop',
+    category: 'stat',
+    stat: 'INT',
+    icon: 'laptop-outline',
+    unlockRule: { level: 3, statQuestCount: { stat: 'INT', count: 7 }, mode: 'level_or_stat' },
+    unlockLabel: 'Complete 7 INT quests or reach Level 3',
+    effectLabel: '+5% INT XP from coding/study quests',
+    flavor: 'Where ideas become progress.',
+    effect: { type: 'stat_xp_percent', stat: 'INT', percent: 5, source: 'any' },
+  },
+  {
+    id: 'blue-light-glasses',
+    name: 'Blue Light Glasses',
+    category: 'stat',
+    stat: 'INT',
+    icon: 'eye-outline',
+    unlockRule: { level: 4, mode: 'level_only' },
+    unlockLabel: 'Reach Level 4',
+    effectLabel: '+5 INT XP on night INT quests',
+    flavor: 'Focus stays sharp.',
+    effect: { type: 'night_stat_flat_xp', stat: 'INT', flatXp: 5, source: 'any' },
+  },
+  {
+    id: 'mechanical-keyboard',
+    name: 'Mechanical Keyboard',
+    category: 'stat',
+    stat: 'INT',
+    icon: 'desktop-outline',
+    unlockRule: { level: 6, mode: 'level_only' },
+    unlockLabel: 'Reach Level 6',
+    effectLabel: '+10% INT XP from custom INT quests',
+    flavor: 'Every click counts.',
+    effect: { type: 'stat_xp_percent', stat: 'INT', percent: 10, source: 'custom' },
+  },
+  {
+    id: 'bookmark',
+    name: 'Bookmark',
+    category: 'stat',
+    stat: 'WIS',
+    icon: 'book-outline',
+    unlockRule: { level: 3, statQuestCount: { stat: 'WIS', count: 7 }, mode: 'level_or_stat' },
+    unlockLabel: 'Complete 7 WIS quests or reach Level 3',
+    effectLabel: '+5% WIS XP from reading quests',
+    flavor: 'Save your place. Keep growing.',
+    effect: { type: 'stat_xp_percent', stat: 'WIS', percent: 5, source: 'any' },
+  },
+  {
+    id: 'reading-lamp',
+    name: 'Reading Lamp',
+    category: 'stat',
+    stat: 'WIS',
+    icon: 'bulb-outline',
+    unlockRule: { level: 5, mode: 'level_only' },
+    unlockLabel: 'Reach Level 5',
+    effectLabel: '+10 WIS XP on first WIS quest of the day',
+    flavor: 'Late nights, brighter mind.',
+    effect: { type: 'first_stat_quest_flat_xp', stat: 'WIS', flatXp: 10, source: 'any' },
+  },
+  {
+    id: 'journal',
+    name: 'Journal',
+    category: 'stat',
+    stat: 'WIS',
+    icon: 'reader-outline',
+    unlockRule: { level: 7, mode: 'level_only' },
+    unlockLabel: 'Reach Level 7',
+    effectLabel: '+5% WIS XP',
+    flavor: 'Thoughts become wisdom.',
+    effect: { type: 'stat_xp_percent', stat: 'WIS', percent: 5, source: 'any' },
+  },
+  {
+    id: 'name-tag',
+    name: 'Name Tag',
+    category: 'stat',
+    stat: 'CHA',
+    icon: 'person-outline',
+    unlockRule: { level: 3, statQuestCount: { stat: 'CHA', count: 5 }, mode: 'level_or_stat' },
+    unlockLabel: 'Complete 5 CHA quests or reach Level 3',
+    effectLabel: '+5% CHA XP from social quests',
+    flavor: 'Presence starts with confidence.',
+    effect: { type: 'stat_xp_percent', stat: 'CHA', percent: 5, source: 'any' },
+  },
+  {
+    id: 'cologne',
+    name: 'Perfume / Cologne',
+    category: 'stat',
+    stat: 'CHA',
+    icon: 'flower-outline',
+    unlockRule: { level: 5, mode: 'level_only' },
+    unlockLabel: 'Reach Level 5',
+    effectLabel: '+10 CHA XP on first CHA quest of the day',
+    flavor: 'Confidence you can wear.',
+    effect: { type: 'first_stat_quest_flat_xp', stat: 'CHA', flatXp: 10, source: 'any' },
+  },
+  {
+    id: 'microphone',
+    name: 'Microphone',
+    category: 'stat',
+    stat: 'CHA',
+    icon: 'mic-outline',
+    unlockRule: { level: 8, mode: 'level_only' },
+    unlockLabel: 'Reach Level 8',
+    effectLabel: '+10% CHA XP from speaking/presentation quests',
+    flavor: 'Own the room.',
+    effect: { type: 'stat_xp_percent', stat: 'CHA', percent: 10, source: 'any' },
+  },
+  {
+    id: 'water-bottle',
+    name: 'Water Bottle',
+    category: 'stat',
+    stat: 'VIT',
+    icon: 'water-outline',
+    unlockRule: { level: 3, statQuestCount: { stat: 'VIT', count: 7 }, mode: 'level_or_stat' },
+    unlockLabel: 'Complete 7 VIT quests or reach Level 3',
+    effectLabel: '+5% VIT XP from health quests',
+    flavor: 'Hydration is a buff.',
+    effect: { type: 'stat_xp_percent', stat: 'VIT', percent: 5, source: 'any' },
+  },
+  {
+    id: 'sleep-mask',
+    name: 'Sleep Mask',
+    category: 'stat',
+    stat: 'VIT',
+    icon: 'moon-outline',
+    unlockRule: { level: 4, mode: 'level_only' },
+    unlockLabel: 'Reach Level 4',
+    effectLabel: '+10 VIT XP on first VIT quest of the day',
+    flavor: 'Recovery is part of the grind.',
+    effect: { type: 'first_stat_quest_flat_xp', stat: 'VIT', flatXp: 10, source: 'any' },
+  },
+  {
+    id: 'yoga-mat',
+    name: 'Yoga Mat',
+    category: 'stat',
+    stat: 'VIT',
+    icon: 'leaf-outline',
+    unlockRule: { level: 6, mode: 'level_only' },
+    unlockLabel: 'Reach Level 6',
+    effectLabel: '+5% VIT XP from wellness/recovery quests',
+    flavor: 'Reset. Recover. Return stronger.',
+    effect: { type: 'stat_xp_percent', stat: 'VIT', percent: 5, source: 'any' },
+  },
+  {
+    id: 'adventurer-badge',
+    name: 'Adventurer Badge',
+    category: 'cosmetic',
+    stat: 'CHA',
+    icon: 'ribbon-outline',
+    unlockRule: { level: 2, mode: 'level_only' },
+    unlockLabel: 'Reach Level 2',
+    effectLabel: 'Cosmetic title',
+    flavor: "You've officially started.",
+    effect: { type: 'cosmetic' },
+  },
+  {
+    id: 'rising-hero-badge',
+    name: 'Rising Hero Badge',
+    category: 'cosmetic',
+    stat: 'CHA',
+    icon: 'trophy-outline',
+    unlockRule: { level: 5, mode: 'level_only' },
+    unlockLabel: 'Reach Level 5',
+    effectLabel: 'Cosmetic title',
+    flavor: 'Progress now has a name.',
+    effect: { type: 'cosmetic' },
+  },
+  {
+    id: 'xp-scroll',
+    name: 'XP Scroll',
+    category: 'utility',
+    stat: 'INT',
+    icon: 'sparkles-outline',
+    unlockRule: { level: 4, mode: 'level_only' },
+    unlockLabel: 'Reach Level 4',
+    effectLabel: '+50 instant XP (one-time)',
+    flavor: 'A boost for the journey.',
+    effect: { type: 'instant_xp_once', instantXp: 50 },
+  },
+  {
+    id: 'streak-shield',
+    name: 'Streak Shield',
+    category: 'utility',
+    stat: 'VIT',
+    icon: 'shield-checkmark-outline',
+    unlockRule: { level: 7, mode: 'level_only' },
+    unlockLabel: 'Reach Level 7',
+    effectLabel: 'Protect one missed day (MVP: reserved)',
+    flavor: 'Consistency has backup.',
+    effect: { type: 'streak_shield' },
+  },
+  {
+    id: 'custom-frame-aura',
+    name: 'Custom Frame Aura',
+    category: 'cosmetic',
+    stat: 'CHA',
+    icon: 'color-wand-outline',
+    unlockRule: { level: 10, mode: 'level_only' },
+    unlockLabel: 'Reach Level 10',
+    effectLabel: 'Profile frame glow',
+    flavor: 'Your growth now shows.',
+    effect: { type: 'cosmetic' },
+  },
+];
+
+export function getItemDefinitionById(itemId: string): ItemDefinition | null {
+  return ITEM_DEFINITIONS.find((item) => item.id === itemId) ?? null;
+}
+
 export type AchievementId =
   | 'first-quest'
   | 'second-step'

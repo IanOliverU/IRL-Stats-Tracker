@@ -28,6 +28,7 @@ import {
   completeCustomQuest as doCompleteCustomQuest,
   completeHabit as doCompleteHabit,
   getStreakForHabit,
+  syncItemUnlocks,
   type CustomQuestResult,
   type QuestCompletionFeedback,
 } from '@/services/habitService';
@@ -40,6 +41,7 @@ interface GameState {
   customQuests: CustomQuest[];
   achievements: AchievementStatus[];
   achievementUnlockQueue: AchievementStatus[];
+  itemUnlockQueue: string[];
   hydrated: boolean;
   /** Incremented on every mutation to force re-renders of computed selectors */
   lastAction: number;
@@ -67,6 +69,7 @@ interface GameActions {
   getCurrentWeekSummary: () => WeekCompletionSummary;
   getRecentWeekSummaries: (weeksToInclude: number) => WeekCompletionSummary[];
   dismissAchievementUnlock: () => void;
+  dismissItemUnlock: () => void;
   refreshAchievements: () => void;
 }
 
@@ -77,6 +80,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   customQuests: [],
   achievements: [],
   achievementUnlockQueue: [],
+  itemUnlockQueue: [],
   hydrated: false,
   lastAction: 0,
 
@@ -84,13 +88,22 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     try {
       getDb();
       processPendingWeeklyBonus();
+      const itemUnlocks = syncItemUnlocks();
       const user = dbGetUser();
       const habits = dbGetHabits();
       const items = dbGetItems();
       const customQuests = dbGetTodayCustomQuests();
       checkAndUnlockAchievements();
       const achievements = getAchievementStatuses();
-      set({ user, habits, items, customQuests, achievements, hydrated: true });
+      set({
+        user,
+        habits,
+        items,
+        customQuests,
+        achievements,
+        itemUnlockQueue: itemUnlocks.unlockedItemIds,
+        hydrated: true,
+      });
     } catch (e) {
       console.warn('DB hydrate failed', e);
       set({ hydrated: true });
@@ -118,6 +131,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
           ...get().achievementUnlockQueue,
           ...newlyUnlockedAchievements,
         ],
+        itemUnlockQueue: [...get().itemUnlockQueue, ...(result.unlockedItemIds ?? [])],
         lastAction: lastAction + 1,
       });
 
@@ -174,6 +188,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       customQuests,
       achievements,
       achievementUnlockQueue: [],
+      itemUnlockQueue: [],
       lastAction: get().lastAction + 1,
     });
   },
@@ -227,6 +242,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
           ...get().achievementUnlockQueue,
           ...newlyUnlockedAchievements,
         ],
+        itemUnlockQueue: [...get().itemUnlockQueue, ...(result.unlockedItemIds ?? [])],
         lastAction: get().lastAction + 1,
       });
 
@@ -238,6 +254,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
             xpIntoLevel: user.xp - totalXpForLevel(user.level),
             xpRequired: xpRequiredForLevel(user.level),
           },
+          unlockedItemIds: result.unlockedItemIds,
+          instantXpFromItems: result.instantXpFromItems,
         };
       }
     }
@@ -270,6 +288,15 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     if (queue.length === 0) return;
     set({
       achievementUnlockQueue: queue.slice(1),
+      lastAction: get().lastAction + 1,
+    });
+  },
+
+  dismissItemUnlock: () => {
+    const queue = get().itemUnlockQueue;
+    if (queue.length === 0) return;
+    set({
+      itemUnlockQueue: queue.slice(1),
       lastAction: get().lastAction + 1,
     });
   },

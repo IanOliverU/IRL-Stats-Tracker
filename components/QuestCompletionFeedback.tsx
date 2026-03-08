@@ -3,6 +3,7 @@ import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
 import { Animated, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type QuestCompletionFeedbackProps = {
   visible: boolean;
@@ -12,6 +13,7 @@ type QuestCompletionFeedbackProps = {
 
 export function QuestCompletionFeedback({ visible, feedback, onHide }: QuestCompletionFeedbackProps) {
   const colors = useAppColors();
+  const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-8)).current;
   const scale = useRef(new Animated.Value(0.98)).current;
@@ -43,7 +45,10 @@ export function QuestCompletionFeedback({ visible, feedback, onHide }: QuestComp
   if (!visible || !feedback) return null;
 
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', top: 20, left: 16, right: 16, zIndex: 999 }}>
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', top: insets.top + 8, left: 16, right: 16, zIndex: 999 }}
+    >
       <Animated.View
         className="rounded-2xl px-4 py-3"
         style={{

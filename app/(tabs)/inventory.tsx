@@ -9,7 +9,6 @@ import { ScrollView, Text, View } from 'react-native';
 export default function InventoryScreen() {
   useGameHydration();
   const items = useGameStore((s) => s.items);
-  const _lastAction = useGameStore((s) => s.lastAction);
 
   const colors = useAppColors();
 
@@ -26,7 +25,7 @@ export default function InventoryScreen() {
         Inventory
       </Text>
       <Text className="text-sm mb-6" style={{ color: colors.textSecondary }}>
-        Unlock items by completing habits. Equipped items boost your stats.
+        Unlock rewards through levels and quest milestones. Many items boost XP gain.
       </Text>
 
       {unlocked.length > 0 && (

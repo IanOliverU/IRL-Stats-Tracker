@@ -1,6 +1,7 @@
 import { AchievementUnlockPopup } from '@/components/AchievementUnlockPopup';
 import { AchievementsModal } from '@/components/AchievementsModal';
 import { CustomQuestCard } from '@/components/CustomQuestCard';
+import { ItemUnlockPopup } from '@/components/ItemUnlockPopup';
 import { ProgressBar } from '@/components/ProgressBar';
 import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
 import { QuestCard } from '@/components/QuestCard';
@@ -13,7 +14,7 @@ import type { StatType } from '@/models';
 import { MAX_CUSTOM_QUESTS_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '@/models';
 import type { QuestCompletionFeedback as QuestCompletionFeedbackData } from '@/services/habitService';
 import { useGameStore } from '@/store/useGameStore';
-import { useAppColors } from '@/store/useThemeStore';
+import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { useFocusEffect } from 'expo-router';
@@ -40,9 +41,11 @@ export default function DashboardScreen() {
   const customQuests = useGameStore((s) => s.customQuests);
   const achievements = useGameStore((s) => s.achievements);
   const achievementUnlockQueue = useGameStore((s) => s.achievementUnlockQueue);
+  const itemUnlockQueue = useGameStore((s) => s.itemUnlockQueue);
   const completeHabit = useGameStore((s) => s.completeHabit);
   const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
   const dismissAchievementUnlock = useGameStore((s) => s.dismissAchievementUnlock);
+  const dismissItemUnlock = useGameStore((s) => s.dismissItemUnlock);
   const resetData = useGameStore((s) => s.resetData);
   const setUserName = useGameStore((s) => s.setUserName);
   const getStreak = useGameStore((s) => s.getStreak);
@@ -52,6 +55,7 @@ export default function DashboardScreen() {
   const refreshAchievements = useGameStore((s) => s.refreshAchievements);
 
   const colors = useAppColors();
+  const isDarkTheme = useIsDarkTheme();
   const isFocused = useIsFocused();
   const effectiveStats = useMemo<Record<StatType, number>>(() => {
     const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
@@ -150,6 +154,11 @@ export default function DashboardScreen() {
 
   const displayName = user.name || 'LifeRPG';
   const activeAchievementUnlock = achievementUnlockQueue[0] ?? null;
+  const activeItemUnlock = itemUnlockQueue[0] ?? null;
+  const shouldShowQuestFeedback = showCompletionFeedback;
+  const shouldShowAchievement = isFocused && !shouldShowQuestFeedback && !!activeAchievementUnlock;
+  const shouldShowItem =
+    isFocused && !shouldShowQuestFeedback && !activeAchievementUnlock && !!activeItemUnlock;
 
   return (
     <>
@@ -279,7 +288,7 @@ export default function DashboardScreen() {
       </ScrollView>
 
       <QuestCompletionFeedback
-        visible={showCompletionFeedback}
+        visible={shouldShowQuestFeedback}
         feedback={completionFeedback}
         onHide={() => {
           setShowCompletionFeedback(false);
@@ -288,8 +297,13 @@ export default function DashboardScreen() {
       />
 
       <AchievementUnlockPopup
-        achievement={isFocused ? activeAchievementUnlock : null}
+        achievement={shouldShowAchievement ? activeAchievementUnlock : null}
         onHide={dismissAchievementUnlock}
+      />
+
+      <ItemUnlockPopup
+        itemId={shouldShowItem ? activeItemUnlock : null}
+        onHide={dismissItemUnlock}
       />
 
       {/* Welcome / Name Modal */}
@@ -358,7 +372,7 @@ export default function DashboardScreen() {
             >
               <Text
                 className="text-sm font-bold"
-                style={{ color: nameInput.trim() ? '#fff' : colors.textTertiary }}
+                style={{ color: nameInput.trim() ? (isDarkTheme ? '#fff' : '#0f172a') : colors.textTertiary }}
               >
                 Start Adventure
               </Text>

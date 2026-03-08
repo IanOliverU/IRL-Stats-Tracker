@@ -4,7 +4,7 @@
     "slug": "liferpg",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/icon-clean.png",
     "scheme": "irlstatstracker",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -30,8 +30,8 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 280,
+          "image": "./assets/images/splash-mark.png",
+          "imageWidth": 220,
           "resizeMode": "contain",
           "backgroundColor": "#0a0a1a",
           "dark": {

@@ -1,5 +1,6 @@
 import { AchievementUnlockPopup } from '@/components/AchievementUnlockPopup';
 import { CustomQuestCard } from '@/components/CustomQuestCard';
+import { ItemUnlockPopup } from '@/components/ItemUnlockPopup';
 import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
 import { QuestCard } from '@/components/QuestCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
@@ -46,12 +47,14 @@ export default function HabitsScreen() {
   const habits = useGameStore((s) => s.habits);
   const customQuests = useGameStore((s) => s.customQuests);
   const achievementUnlockQueue = useGameStore((s) => s.achievementUnlockQueue);
+  const itemUnlockQueue = useGameStore((s) => s.itemUnlockQueue);
   const completeHabit = useGameStore((s) => s.completeHabit);
   const addHabit = useGameStore((s) => s.addHabit);
   const removeHabit = useGameStore((s) => s.removeHabit);
   const addCustomQuest = useGameStore((s) => s.addCustomQuest);
   const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
   const dismissAchievementUnlock = useGameStore((s) => s.dismissAchievementUnlock);
+  const dismissItemUnlock = useGameStore((s) => s.dismissItemUnlock);
   const deleteCustomQuest = useGameStore((s) => s.deleteCustomQuest);
   const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
@@ -137,6 +140,11 @@ export default function HabitsScreen() {
   const pendingCustomQuests = customQuests.filter((q) => !q.completedAt);
   const completedCustomQuests = customQuests.filter((q) => !!q.completedAt);
   const activeAchievementUnlock = achievementUnlockQueue[0] ?? null;
+  const activeItemUnlock = itemUnlockQueue[0] ?? null;
+  const shouldShowQuestFeedback = showCompletionFeedback;
+  const shouldShowAchievement = isFocused && !shouldShowQuestFeedback && !!activeAchievementUnlock;
+  const shouldShowItem =
+    isFocused && !shouldShowQuestFeedback && !activeAchievementUnlock && !!activeItemUnlock;
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
@@ -280,7 +288,7 @@ export default function HabitsScreen() {
       </ScrollView>
 
       <QuestCompletionFeedback
-        visible={showCompletionFeedback}
+        visible={shouldShowQuestFeedback}
         feedback={completionFeedback}
         onHide={() => {
           setShowCompletionFeedback(false);
@@ -289,8 +297,13 @@ export default function HabitsScreen() {
       />
 
       <AchievementUnlockPopup
-        achievement={isFocused ? activeAchievementUnlock : null}
+        achievement={shouldShowAchievement ? activeAchievementUnlock : null}
         onHide={dismissAchievementUnlock}
+      />
+
+      <ItemUnlockPopup
+        itemId={shouldShowItem ? activeItemUnlock : null}
+        onHide={dismissItemUnlock}
       />
 
       {/* ─── Add Habit Modal ─────────────────────────────── */}
