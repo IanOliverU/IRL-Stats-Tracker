@@ -1,5 +1,5 @@
 import { ThemePicker } from '@/components/ThemePicker';
-import { useAppColors } from '@/store/useThemeStore';
+import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -13,6 +13,13 @@ type SettingsModalProps = {
 
 export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsModalProps) {
     const colors = useAppColors();
+    const isDarkTheme = useIsDarkTheme();
+    const destructiveTextColor = isDarkTheme ? '#ef4444' : '#991b1b';
+    const destructiveMutedBg = isDarkTheme ? '#ef444415' : '#fee2e2';
+    const destructiveButtonBg = isDarkTheme ? '#ef4444' : '#fecaca';
+    const destructiveButtonPressedBg = isDarkTheme ? '#dc2626' : '#fca5a5';
+    const destructiveButtonTextColor = isDarkTheme ? '#ffffff' : '#7f1d1d';
+    const destructiveSecondaryText = isDarkTheme ? colors.textSecondary : '#4b5563';
 
     const [showThemePicker, setShowThemePicker] = useState(false);
     const [showResetFlow, setShowResetFlow] = useState(false);
@@ -127,7 +134,7 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                                         Color Theme
                                     </Text>
                                     <Text className="text-xs mt-0.5" style={{ color: colors.textSecondary }}>
-                                        Customize the app's appearance
+                                        Customize the app&apos;s appearance
                                     </Text>
                                 </View>
                                 <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
@@ -145,9 +152,9 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                                 >
                                     <View
                                         className="w-10 h-10 items-center justify-center rounded-xl mr-4"
-                                        style={{ backgroundColor: '#ef444415' }}
+                                        style={{ backgroundColor: destructiveMutedBg }}
                                     >
-                                        <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                                        <Ionicons name="trash-outline" size={20} color={destructiveTextColor} />
                                     </View>
                                     <View className="flex-1">
                                         <Text className="text-base font-semibold" style={{ color: colors.text }}>
@@ -163,31 +170,35 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                                 <View
                                     className="rounded-xl p-4"
                                     style={{
-                                        backgroundColor: colors.background,
+                                        backgroundColor: colors.card,
                                         borderWidth: 1,
-                                        borderColor: isCountdownDone ? '#ef4444' : colors.cardBorder,
+                                        borderColor: isCountdownDone ? destructiveTextColor : colors.cardBorder,
                                     }}
                                 >
                                     <View className="flex-row items-center mb-3">
-                                        <Ionicons name="warning-outline" size={20} color="#ef4444" />
-                                        <Text className="text-sm font-semibold ml-2" style={{ color: '#ef4444' }}>
+                                        <Ionicons name="warning-outline" size={20} color={destructiveTextColor} />
+                                        <Text className="text-sm font-semibold ml-2" style={{ color: destructiveTextColor }}>
                                             Reset Data
                                         </Text>
                                     </View>
-                                    <Text className="text-xs mb-4" style={{ color: colors.textSecondary }}>
+                                    <Text className="text-xs mb-4" style={{ color: destructiveSecondaryText }}>
                                         This will permanently delete all your habits, stats, and progress.
                                     </Text>
                                     {!isCountdownDone ? (
                                         <View className="items-center py-3">
                                             <View
                                                 className="w-14 h-14 rounded-full items-center justify-center mb-2"
-                                                style={{ backgroundColor: '#ef444415', borderWidth: 2, borderColor: '#ef444440' }}
+                                                style={{
+                                                    backgroundColor: destructiveMutedBg,
+                                                    borderWidth: 2,
+                                                    borderColor: isDarkTheme ? '#ef444440' : '#fecaca',
+                                                }}
                                             >
-                                                <Text className="text-2xl font-bold" style={{ color: '#ef4444' }}>
+                                                <Text className="text-2xl font-bold" style={{ color: destructiveTextColor }}>
                                                     {countdown}
                                                 </Text>
                                             </View>
-                                            <Text className="text-xs" style={{ color: colors.textTertiary }}>
+                                            <Text className="text-xs" style={{ color: destructiveSecondaryText }}>
                                                 Please wait...
                                             </Text>
                                         </View>
@@ -196,12 +207,14 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                                             onPress={handleResetPress}
                                             className="items-center py-3.5 rounded-xl"
                                             style={({ pressed }) => ({
-                                                backgroundColor: pressed ? '#dc2626' : '#ef4444',
+                                                backgroundColor: pressed ? destructiveButtonPressedBg : destructiveButtonBg,
                                             })}
                                         >
                                             <View className="flex-row items-center">
-                                                <Ionicons name="trash-outline" size={16} color="#fff" />
-                                                <Text className="text-sm font-bold text-white ml-1.5">Reset Data</Text>
+                                                <Ionicons name="trash-outline" size={16} color={destructiveButtonTextColor} />
+                                                <Text className="text-sm font-bold ml-1.5" style={{ color: destructiveButtonTextColor }}>
+                                                    Reset Data
+                                                </Text>
                                             </View>
                                         </Pressable>
                                     )}
@@ -217,7 +230,7 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                                         }}
                                         className="items-center mt-3"
                                     >
-                                        <Text className="text-xs font-medium" style={{ color: colors.textSecondary }}>
+                                        <Text className="text-xs font-medium" style={{ color: destructiveSecondaryText }}>
                                             Cancel
                                         </Text>
                                     </Pressable>
@@ -242,9 +255,9 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                         <View className="items-center mb-4">
                             <View
                                 className="w-14 h-14 rounded-full items-center justify-center mb-3"
-                                style={{ backgroundColor: '#ef444415' }}
+                                style={{ backgroundColor: destructiveMutedBg }}
                             >
-                                <Ionicons name="alert-circle-outline" size={32} color="#ef4444" />
+                                <Ionicons name="alert-circle-outline" size={32} color={destructiveTextColor} />
                             </View>
                             <Text className="text-lg font-bold text-center" style={{ color: colors.text }}>
                                 Are you sure?
@@ -257,10 +270,12 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                             onPress={handleConfirmReset}
                             className="items-center py-3.5 rounded-xl mb-3"
                             style={({ pressed }) => ({
-                                backgroundColor: pressed ? '#dc2626' : '#ef4444',
+                                backgroundColor: pressed ? destructiveButtonPressedBg : destructiveButtonBg,
                             })}
                         >
-                            <Text className="text-sm font-bold text-white">Yes, Delete Everything</Text>
+                            <Text className="text-sm font-bold" style={{ color: destructiveButtonTextColor }}>
+                                Yes, Delete Everything
+                            </Text>
                         </Pressable>
                         <Pressable
                             onPress={() => setShowConfirmModal(false)}

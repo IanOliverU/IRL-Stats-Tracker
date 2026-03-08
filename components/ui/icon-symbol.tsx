@@ -19,6 +19,7 @@ const MAPPING = {
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
   'list.bullet.clipboard': 'checklist',
+  calendar: 'calendar-month',
   'person.fill': 'person',
   'bag.fill': 'inventory',
 } as IconMapping;

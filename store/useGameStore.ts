@@ -1,6 +1,13 @@
 import type { CustomQuest, Difficulty, Habit, HabitFrequency, Item, StatType, User } from '@/models';
 import { DIFFICULTY_XP } from '@/models';
 import {
+  getCompletedDayKeysForMonth,
+  getCurrentWeekCompletionSummary,
+  getRecentWeekCompletionSummaries,
+  processPendingWeeklyBonus,
+  type WeekCompletionSummary,
+} from '@/services/calendarService';
+import {
   dbCountCompletedCustomQuestsToday,
   dbCreateCustomQuest,
   dbCreateHabit,
@@ -19,7 +26,6 @@ import {
 import {
   completeCustomQuest as doCompleteCustomQuest,
   completeHabit as doCompleteHabit,
-  getEffectiveStat,
   getStreakForHabit,
   type CustomQuestResult,
 } from '@/services/habitService';
@@ -53,6 +59,9 @@ interface GameActions {
   setUserName: (name: string) => void;
   /** Re-read user (+ items) from DB so any screen shows up-to-date stats */
   refreshUser: () => void;
+  getCompletedDaysForMonth: (year: number, monthIndex: number) => string[];
+  getCurrentWeekSummary: () => WeekCompletionSummary;
+  getRecentWeekSummaries: (weeksToInclude: number) => WeekCompletionSummary[];
 }
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
@@ -66,6 +75,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   hydrate: () => {
     try {
       getDb();
+      processPendingWeeklyBonus();
       const user = dbGetUser();
       const habits = dbGetHabits();
       const items = dbGetItems();
@@ -81,8 +91,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const { habits, lastAction } = get();
     const habit = habits.find((h) => h.id === habitId);
     if (!habit) return;
-    const user = doCompleteHabit(habitId, habit);
-    if (user) {
+    const completedUser = doCompleteHabit(habitId, habit);
+    if (completedUser) {
+      processPendingWeeklyBonus();
+      const user = dbGetUser();
       const items = dbGetItems();
       const freshHabits = dbGetHabits();
       set({ user, items, habits: freshHabits, lastAction: lastAction + 1 });
@@ -141,6 +153,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
     const result = doCompleteCustomQuest(quest);
     if (result.success) {
+      processPendingWeeklyBonus();
       const user = dbGetUser();
       const items = dbGetItems();
       const customQuests = dbGetTodayCustomQuests();
@@ -170,11 +183,22 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     set({ user, items, lastAction: get().lastAction + 1 });
   },
 
+  getCompletedDaysForMonth: (year: number, monthIndex: number) =>
+    getCompletedDayKeysForMonth(year, monthIndex),
+  getCurrentWeekSummary: () => getCurrentWeekCompletionSummary(),
+  getRecentWeekSummaries: (weeksToInclude: number) =>
+    getRecentWeekCompletionSummaries(weeksToInclude),
+
   getStreak: (habitId: string) => getStreakForHabit(habitId),
   isCompletedToday: dbWasCompletedToday,
   getEffectiveStat: (stat: StatType) => {
     const user = get().user;
     if (!user) return 0;
-    return getEffectiveStat(user, stat);
+    const base = user[stat.toLowerCase() as keyof Pick<User, 'str' | 'int' | 'wis' | 'cha' | 'vit'>] as number;
+    const bonus = get()
+      .items
+      .filter((item) => item.statBonus === stat && !!item.unlockedAt)
+      .reduce((sum, item) => sum + item.bonusAmount, 0);
+    return base + bonus;
   },
 }));

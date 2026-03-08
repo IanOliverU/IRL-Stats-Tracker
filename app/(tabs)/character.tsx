@@ -7,7 +7,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
@@ -15,12 +15,25 @@ const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
 export default function CharacterScreen() {
   useGameHydration();
   const user = useGameStore((s) => s.user);
-  const getEffectiveStat = useGameStore((s) => s.getEffectiveStat);
+  const items = useGameStore((s) => s.items);
   const getTotalMissionXp = useGameStore((s) => s.getTotalMissionXp);
   const refreshUser = useGameStore((s) => s.refreshUser);
-  const _lastAction = useGameStore((s) => s.lastAction);
 
   const colors = useAppColors();
+  const effectiveStats = useMemo<Record<StatType, number>>(() => {
+    const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
+    for (const item of items) {
+      if (!item.unlockedAt) continue;
+      bonusByStat[item.statBonus] += item.bonusAmount;
+    }
+    return {
+      STR: (user?.str ?? 0) + bonusByStat.STR,
+      INT: (user?.int ?? 0) + bonusByStat.INT,
+      WIS: (user?.wis ?? 0) + bonusByStat.WIS,
+      CHA: (user?.cha ?? 0) + bonusByStat.CHA,
+      VIT: (user?.vit ?? 0) + bonusByStat.VIT,
+    };
+  }, [items, user?.cha, user?.int, user?.str, user?.vit, user?.wis]);
 
   // Re-read user from DB every time this tab comes into focus
   // so stats / level always reflect the latest data.
@@ -41,7 +54,7 @@ export default function CharacterScreen() {
   const xpIntoLevel = user.xp - totalXpForLevel(user.level);
   const required = xpRequiredForLevel(user.level);
   const xpProgress = required > 0 ? xpIntoLevel / required : 1;
-  const totalStats = STAT_ORDER.reduce((sum, s) => sum + getEffectiveStat(s), 0);
+  const totalStats = STAT_ORDER.reduce((sum, stat) => sum + effectiveStats[stat], 0);
   const totalMissionXp = getTotalMissionXp();
 
   return (
@@ -94,12 +107,12 @@ export default function CharacterScreen() {
           <View key={stat} className="mb-3">
             <View
               className="rounded-xl p-4 flex-row items-center"
-              style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
-            >
-              <StatCard stat={stat} value={getEffectiveStat(stat)} />
-              <View className="ml-4 flex-1">
-                <Text className="text-xs" style={{ color: colors.textSecondary }}>
-                  {STAT_DESCRIPTIONS[stat]}
+                style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+              >
+                <StatCard stat={stat} value={effectiveStats[stat]} />
+                <View className="ml-4 flex-1">
+                  <Text className="text-xs" style={{ color: colors.textSecondary }}>
+                    {STAT_DESCRIPTIONS[stat]}
                 </Text>
               </View>
             </View>

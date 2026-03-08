@@ -12,7 +12,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -30,6 +30,7 @@ const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
 export default function DashboardScreen() {
   useGameHydration();
   const user = useGameStore((s) => s.user);
+  const items = useGameStore((s) => s.items);
   const habits = useGameStore((s) => s.habits);
   const customQuests = useGameStore((s) => s.customQuests);
   const completeHabit = useGameStore((s) => s.completeHabit);
@@ -38,12 +39,24 @@ export default function DashboardScreen() {
   const setUserName = useGameStore((s) => s.setUserName);
   const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
-  const getEffectiveStat = useGameStore((s) => s.getEffectiveStat);
   const getCustomQuestsCompletedToday = useGameStore((s) => s.getCustomQuestsCompletedToday);
   const refreshUser = useGameStore((s) => s.refreshUser);
-  const _lastAction = useGameStore((s) => s.lastAction);
 
   const colors = useAppColors();
+  const effectiveStats = useMemo<Record<StatType, number>>(() => {
+    const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
+    for (const item of items) {
+      if (!item.unlockedAt) continue;
+      bonusByStat[item.statBonus] += item.bonusAmount;
+    }
+    return {
+      STR: (user?.str ?? 0) + bonusByStat.STR,
+      INT: (user?.int ?? 0) + bonusByStat.INT,
+      WIS: (user?.wis ?? 0) + bonusByStat.WIS,
+      CHA: (user?.cha ?? 0) + bonusByStat.CHA,
+      VIT: (user?.vit ?? 0) + bonusByStat.VIT,
+    };
+  }, [items, user?.cha, user?.int, user?.str, user?.vit, user?.wis]);
   const [showSettings, setShowSettings] = useState(false);
   const [showResetAnimation, setShowResetAnimation] = useState(false);
 
@@ -166,7 +179,7 @@ export default function DashboardScreen() {
           </View>
           <View className="flex-row flex-wrap gap-2">
             {STAT_ORDER.map((stat) => (
-              <StatCard key={stat} stat={stat} value={getEffectiveStat(stat)} compact />
+              <StatCard key={stat} stat={stat} value={effectiveStats[stat]} compact />
             ))}
           </View>
         </View>
@@ -202,7 +215,7 @@ export default function DashboardScreen() {
             <View className="flex-row items-center">
               <Ionicons name="flash-outline" size={18} color={colors.text} />
               <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
-                Today's Habits
+                Today&apos;s Habits
               </Text>
             </View>
             {habits.length > 0 && (

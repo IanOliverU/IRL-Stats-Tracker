@@ -240,6 +240,46 @@ export function dbInsertHabitLog(log: Omit<HabitLog, 'id'>): void {
   );
 }
 
+/** Distinct UTC day keys (YYYY-MM-DD) where at least one habit/custom quest was completed. */
+export function dbGetCompletedDayKeysBetween(startIso: string, endIso: string): string[] {
+  const database = getDb();
+  const rows = database.getAllSync<{ day: string }>(
+    `
+      SELECT day
+      FROM (
+        SELECT SUBSTR(completedAt, 1, 10) AS day
+        FROM habit_log
+        WHERE completedAt >= ? AND completedAt <= ?
+        UNION
+        SELECT SUBSTR(completedAt, 1, 10) AS day
+        FROM custom_quest
+        WHERE completedAt IS NOT NULL AND completedAt >= ? AND completedAt <= ?
+      )
+      ORDER BY day ASC
+    `,
+    [startIso, endIso, startIso, endIso]
+  );
+
+  return (rows ?? []).map((row) => row.day);
+}
+
+/** First timestamp where the user completed any habit or custom quest. */
+export function dbGetFirstQuestCompletionAt(): string | null {
+  const database = getDb();
+  const row = database.getFirstSync<{ firstCompletedAt: string | null }>(
+    `
+      SELECT MIN(ts) AS firstCompletedAt
+      FROM (
+        SELECT MIN(completedAt) AS ts FROM habit_log
+        UNION ALL
+        SELECT MIN(completedAt) AS ts FROM custom_quest WHERE completedAt IS NOT NULL
+      )
+      WHERE ts IS NOT NULL
+    `
+  );
+  return row?.firstCompletedAt ?? null;
+}
+
 // --- Items ---
 export function dbGetItems(): Item[] {
   const database = getDb();
@@ -281,6 +321,7 @@ export function dbResetAllData(): void {
     DELETE FROM item;
     DELETE FROM user;
     DELETE FROM custom_quest;
+    DELETE FROM settings WHERE key LIKE 'weekly_bonus_processed_%';
   `);
 
   // Re-seed user (name = null so welcome modal appears)

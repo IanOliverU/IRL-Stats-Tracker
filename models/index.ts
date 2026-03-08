@@ -87,6 +87,19 @@ export const MAX_CUSTOM_QUESTS_PER_DAY = 3;
 /** Max XP a user can earn per stat per day from custom quests */
 export const MAX_CUSTOM_XP_PER_STAT_PER_DAY = 100;
 
+export const WEEKLY_COMPLETION_BONUSES = [
+  { days: 7, bonusXp: 100 },
+  { days: 5, bonusXp: 50 },
+  { days: 3, bonusXp: 20 },
+] as const;
+
+export function weeklyBonusForCompletedDays(completedDays: number): number {
+  for (const tier of WEEKLY_COMPLETION_BONUSES) {
+    if (completedDays >= tier.days) return tier.bonusXp;
+  }
+  return 0;
+}
+
 export const STAT_LABELS: Record<StatType, string> = {
   STR: 'Strength',
   INT: 'Intelligence',
