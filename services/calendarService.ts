@@ -1,5 +1,6 @@
 import { totalXpForLevel, weeklyBonusForCompletedDays, xpRequiredForLevel } from '@/models';
 import {
+  dbGetAllCompletedQuestDayKeys,
   dbGetCompletedDayKeysBetween,
   dbGetFirstQuestCompletionAt,
   dbGetSetting,
@@ -27,6 +28,12 @@ export interface WeeklyBonusAwardResult {
   bonusXp: number;
 }
 
+export interface QuestStreakSummary {
+  currentStreak: number;
+  longestStreak: number;
+  lastCompletedDayKey: string | null;
+}
+
 function formatDateKeyUtc(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -40,6 +47,12 @@ function addUtcDays(date: Date, days: number): Date {
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + days);
   return next;
+}
+
+function getUtcDayDistance(from: Date, to: Date): number {
+  const fromStart = getStartOfUtcDay(from);
+  const toStart = getStartOfUtcDay(to);
+  return Math.round((toStart.getTime() - fromStart.getTime()) / (24 * 60 * 60 * 1000));
 }
 
 function getStartOfUtcDay(date: Date): Date {
@@ -82,6 +95,51 @@ function getCurrentStreakWithinWeek(
   return streak;
 }
 
+function getPreviousDayKey(dayKey: string): string {
+  const date = parseDateKeyToUtc(dayKey);
+  return formatDateKeyUtc(addUtcDays(date, -1));
+}
+
+function getLongestConsecutiveStreak(dayKeys: string[]): number {
+  if (dayKeys.length === 0) return 0;
+
+  let longest = 1;
+  let current = 1;
+  for (let index = 1; index < dayKeys.length; index++) {
+    const prevDate = parseDateKeyToUtc(dayKeys[index - 1]);
+    const currentDate = parseDateKeyToUtc(dayKeys[index]);
+    if (getUtcDayDistance(prevDate, currentDate) === 1) {
+      current += 1;
+    } else {
+      current = 1;
+    }
+    if (current > longest) longest = current;
+  }
+  return longest;
+}
+
+function getCurrentQuestStreak(dayKeySet: Set<string>, referenceDate: Date): number {
+  if (dayKeySet.size === 0) return 0;
+
+  const referenceStart = getStartOfUtcDay(referenceDate);
+  const todayKey = formatDateKeyUtc(referenceStart);
+  const yesterdayKey = formatDateKeyUtc(addUtcDays(referenceStart, -1));
+  let cursorKey: string | null = dayKeySet.has(todayKey)
+    ? todayKey
+    : dayKeySet.has(yesterdayKey)
+      ? yesterdayKey
+      : null;
+
+  if (!cursorKey) return 0;
+
+  let streak = 0;
+  while (cursorKey && dayKeySet.has(cursorKey)) {
+    streak += 1;
+    cursorKey = getPreviousDayKey(cursorKey);
+  }
+  return streak;
+}
+
 export function getCurrentWeekStartKey(referenceDate: Date = new Date()): string {
   return formatDateKeyUtc(getWeekStartDateUtc(referenceDate));
 }
@@ -117,6 +175,29 @@ export function getWeekCompletionSummary(
 
 export function getCurrentWeekCompletionSummary(referenceDate: Date = new Date()): WeekCompletionSummary {
   return getWeekCompletionSummary(getCurrentWeekStartKey(referenceDate), referenceDate);
+}
+
+export function getQuestStreakSummary(referenceDate: Date = new Date()): QuestStreakSummary {
+  const dayKeys = [...new Set(dbGetAllCompletedQuestDayKeys())].sort();
+  const dayKeySet = new Set(dayKeys);
+
+  const currentStreak = getCurrentQuestStreak(dayKeySet, referenceDate);
+  const computedLongest = getLongestConsecutiveStreak(dayKeys);
+
+  const storedLongestRaw = dbGetSetting('quest_longest_streak');
+  const storedLongest = storedLongestRaw ? parseInt(storedLongestRaw, 10) : 0;
+  const safeStoredLongest = Number.isFinite(storedLongest) ? storedLongest : 0;
+  const longestStreak = Math.max(computedLongest, safeStoredLongest);
+
+  if (longestStreak > safeStoredLongest) {
+    dbSetSetting('quest_longest_streak', String(longestStreak));
+  }
+
+  return {
+    currentStreak,
+    longestStreak,
+    lastCompletedDayKey: dayKeys[dayKeys.length - 1] ?? null,
+  };
 }
 
 export function getRecentWeekCompletionSummaries(

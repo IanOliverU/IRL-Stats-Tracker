@@ -1,64 +1,59 @@
-import { AchievementUnlockPopup } from '@/components/AchievementUnlockPopup';
-import { AchievementsModal } from '@/components/AchievementsModal';
-import { CustomQuestCard } from '@/components/CustomQuestCard';
-import { ItemUnlockPopup } from '@/components/ItemUnlockPopup';
 import { ProgressBar } from '@/components/ProgressBar';
-import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
-import { QuestCard } from '@/components/QuestCard';
-import { QuestStartAnimation } from '@/components/QuestStartAnimation';
-import { ResetAnimation } from '@/components/ResetAnimation';
-import { SettingsModal } from '@/components/SettingsModal';
-import { StatCard } from '@/components/StatCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
-import { getModalBackdropColor } from '@/lib/modalBackdrop';
 import type { StatType } from '@/models';
-import { MAX_CUSTOM_QUESTS_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '@/models';
-import type { QuestCompletionFeedback as QuestCompletionFeedbackData } from '@/services/habitService';
 import { useGameStore } from '@/store/useGameStore';
-import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
+import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
-import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
+const DAILY_XP_TARGET = 200;
 
-export default function DashboardScreen() {
-  useGameHydration();
+const MOTIVATION_MESSAGES = [
+  'Consistency beats motivation. Complete at least one quest today.',
+  'Small wins compound. Clear one quest now.',
+  'Momentum starts with one action. Start your easiest quest first.',
+  'Progress is built daily. Keep your streak alive.',
+  'Done is better than perfect. Finish one meaningful quest.',
+];
+
+function getGreeting(now: Date): string {
+  const hour = now.getHours();
+  if (hour < 12) return 'Good Morning';
+  if (hour < 18) return 'Good Afternoon';
+  return 'Good Evening';
+}
+
+function getDailyMessage(now: Date): string {
+  const hash = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+  const index = hash % MOTIVATION_MESSAGES.length;
+  return MOTIVATION_MESSAGES[index];
+}
+
+export default function WelcomeScreen() {
+  const hydrated = useGameHydration();
+  const router = useRouter();
+  const colors = useAppColors();
+
   const user = useGameStore((s) => s.user);
   const items = useGameStore((s) => s.items);
   const habits = useGameStore((s) => s.habits);
   const customQuests = useGameStore((s) => s.customQuests);
-  const achievements = useGameStore((s) => s.achievements);
-  const achievementUnlockQueue = useGameStore((s) => s.achievementUnlockQueue);
-  const itemUnlockQueue = useGameStore((s) => s.itemUnlockQueue);
-  const completeHabit = useGameStore((s) => s.completeHabit);
-  const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
-  const dismissAchievementUnlock = useGameStore((s) => s.dismissAchievementUnlock);
-  const dismissItemUnlock = useGameStore((s) => s.dismissItemUnlock);
-  const resetData = useGameStore((s) => s.resetData);
-  const setUserName = useGameStore((s) => s.setUserName);
-  const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
-  const getCustomQuestsCompletedToday = useGameStore((s) => s.getCustomQuestsCompletedToday);
-  const refreshUser = useGameStore((s) => s.refreshUser);
-  const refreshAchievements = useGameStore((s) => s.refreshAchievements);
+  const getQuestStreakSummary = useGameStore((s) => s.getQuestStreakSummary);
+  const getTodayQuestXp = useGameStore((s) => s.getTodayQuestXp);
 
-  const colors = useAppColors();
-  const isDarkTheme = useIsDarkTheme();
-  const strongBackdropColor = getModalBackdropColor(colors.background, isDarkTheme, 'strong');
-  const isFocused = useIsFocused();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   const effectiveStats = useMemo<Record<StatType, number>>(() => {
     const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
     for (const item of items) {
@@ -73,57 +68,38 @@ export default function DashboardScreen() {
       VIT: (user?.vit ?? 0) + bonusByStat.VIT,
     };
   }, [items, user?.cha, user?.int, user?.str, user?.vit, user?.wis]);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showAchievements, setShowAchievements] = useState(false);
-  const [showResetAnimation, setShowResetAnimation] = useState(false);
 
-  // Welcome / name modal state
-  const [showNameModal, setShowNameModal] = useState(false);
-  const [nameInput, setNameInput] = useState('');
-  const [showQuestStart, setShowQuestStart] = useState(false);
-  const [questStartName, setQuestStartName] = useState('');
-  const [completionFeedback, setCompletionFeedback] = useState<QuestCompletionFeedbackData | null>(null);
-  const [showCompletionFeedback, setShowCompletionFeedback] = useState(false);
+  const strongestStat = useMemo<StatType>(() => {
+    return STAT_ORDER.reduce((best, stat) => (effectiveStats[stat] > effectiveStats[best] ? stat : best), 'STR');
+  }, [effectiveStats]);
 
-  // Re-read user from DB every time this tab comes into focus
-  // so level / stats always reflect the latest data.
-  useFocusEffect(
-    useCallback(() => {
-      refreshUser();
-      refreshAchievements();
-    }, [refreshAchievements, refreshUser])
+  const streak = getQuestStreakSummary();
+  const todayXp = getTodayQuestXp();
+  const habitCompletedCount = habits.filter((habit) => isCompletedToday(habit.id)).length;
+  const customCompletedToday = customQuests.filter((quest) => !!quest.completedAt).length;
+  const questCompletedToday = habitCompletedCount + customCompletedToday;
+  const questTargetToday = habits.length + customQuests.length;
+  const xpProgress = Math.min(1, todayXp / DAILY_XP_TARGET);
+
+  const todayQuestItems = useMemo(
+    () => [
+      ...habits.map((habit) => ({
+        id: habit.id,
+        type: 'habit' as const,
+        title: habit.title,
+        completed: isCompletedToday(habit.id),
+      })),
+      ...customQuests.map((quest) => ({
+        id: quest.id,
+        type: 'custom' as const,
+        title: quest.title,
+        completed: !!quest.completedAt,
+      })),
+    ],
+    [customQuests, habits, isCompletedToday]
   );
 
-  // Show name modal if user has no name set
-  useEffect(() => {
-    if (user && !user.name) {
-      setShowNameModal(true);
-    }
-  }, [user]);
-
-  const handleSetName = useCallback(() => {
-    const trimmed = nameInput.trim();
-    if (!trimmed) return;
-    setUserName(trimmed);
-    setShowNameModal(false);
-    setNameInput('');
-    // Trigger quest start animation with the name
-    setQuestStartName(trimmed);
-    setTimeout(() => {
-      setShowQuestStart(true);
-    }, 300);
-  }, [nameInput, setUserName]);
-
-  const handleResetTriggered = useCallback(() => {
-    setShowResetAnimation(true);
-  }, []);
-
-  const handleAnimationComplete = useCallback(() => {
-    resetData();
-    setShowResetAnimation(false);
-  }, [resetData]);
-
-  if (!user) {
+  if (!hydrated || !user) {
     return (
       <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.background }}>
         <Text style={{ color: colors.textSecondary }}>Loading...</Text>
@@ -131,283 +107,171 @@ export default function DashboardScreen() {
     );
   }
 
-  const xpIntoLevel = user.xp - totalXpForLevel(user.level);
-  const required = xpRequiredForLevel(user.level);
-  const xpProgress = required > 0 ? xpIntoLevel / required : 1;
-  const habitCompletedCount = habits.filter((h) => isCompletedToday(h.id)).length;
-  const customCompletedToday = getCustomQuestsCompletedToday();
-
-  const handleCompleteCustom = (questId: string) => {
-    const result = completeCustomQuestAction(questId);
-    if (!result.success) {
-      Alert.alert('Limit Reached', result.message);
-      return;
-    }
-    setCompletionFeedback(result.feedback);
-    setShowCompletionFeedback(true);
-  };
-
-  const handleCompleteHabit = (habitId: string) => {
-    const feedback = completeHabit(habitId);
-    if (!feedback) return;
-    setCompletionFeedback(feedback);
-    setShowCompletionFeedback(true);
-  };
-
-  const displayName = user.name || 'LifeRPG';
-  const activeAchievementUnlock = achievementUnlockQueue[0] ?? null;
-  const activeItemUnlock = itemUnlockQueue[0] ?? null;
-  const shouldShowQuestFeedback = showCompletionFeedback;
-  const shouldShowAchievement = isFocused && !shouldShowQuestFeedback && !!activeAchievementUnlock;
-  const shouldShowItem =
-    isFocused && !shouldShowQuestFeedback && !activeAchievementUnlock && !!activeItemUnlock;
+  const displayName = user.name?.trim() || 'Adventurer';
+  const greeting = getGreeting(now);
+  const weekday = now.toLocaleDateString(undefined, { weekday: 'long' });
+  const dateLabel = now.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  const timeLabel = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const message = getDailyMessage(now);
 
   return (
-    <>
-      <ScrollView
-        className="flex-1"
-        style={{ backgroundColor: colors.background }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+    <ScrollView
+      className="flex-1"
+      style={{ backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+    >
+      <View
+        className="rounded-2xl p-5 mt-3"
+        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
       >
-        {/* Hero */}
-        <View className="mt-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <View className="flex-1 mr-3">
-              <Text className="text-2xl font-bold" numberOfLines={1} style={{ color: colors.text }}>
-                {displayName}
-              </Text>
-            </View>
-            <View className="flex-row items-center gap-2">
-              <Pressable
-                onPress={() => setShowAchievements(true)}
-                className="w-9 h-9 items-center justify-center rounded-xl"
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? colors.inputBg : 'transparent',
-                })}
-              >
-                <Ionicons name="trophy-outline" size={20} color={colors.warning} />
-              </Pressable>
-              <Pressable
-                onPress={() => setShowSettings(true)}
-                className="w-9 h-9 items-center justify-center rounded-xl"
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? colors.inputBg : 'transparent',
-                })}
-              >
-                <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-          </View>
+        <Text className="text-2xl font-bold" style={{ color: colors.text }}>
+          {greeting}, {displayName}
+        </Text>
+        <Text className="mt-3 text-sm" style={{ color: colors.textSecondary }}>
+          {weekday}
+        </Text>
+        <Text className="text-base font-semibold" style={{ color: colors.text }}>
+          {dateLabel}
+        </Text>
+        <Text className="text-sm" style={{ color: colors.accent }}>
+          {timeLabel}
+        </Text>
+      </View>
 
-          <View className="flex-row items-center justify-between mb-2">
-            <View
-              className="flex-row items-center px-3 py-1.5 rounded-lg"
-              style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
-            >
-              <Ionicons name="shield-outline" size={14} color={colors.accent} />
-              <Text className="text-sm font-bold ml-1.5" style={{ color: colors.accent }}>
-                Level {user.level}
-              </Text>
-            </View>
-            <Text className="text-sm" style={{ color: colors.textSecondary }}>
-              {xpIntoLevel} / {required} XP
-            </Text>
-          </View>
+      <View
+        className="rounded-2xl p-4 mt-4"
+        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+      >
+        <View className="flex-row items-center">
+          <Ionicons name="flame-outline" size={18} color={colors.warning} />
+          <Text className="ml-2 text-base font-semibold" style={{ color: colors.text }}>
+            Streak
+          </Text>
+        </View>
+        <Text className="mt-2 text-sm" style={{ color: colors.text }}>
+          <Text style={{ color: colors.warning }}>Current:</Text> {streak.currentStreak} Days
+        </Text>
+        <Text className="text-sm" style={{ color: colors.textSecondary }}>
+          Longest: {streak.longestStreak} Days
+        </Text>
+      </View>
+
+      <View
+        className="rounded-2xl p-4 mt-4"
+        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+      >
+        <Text className="text-base font-semibold" style={{ color: colors.text }}>
+          Today&apos;s Progress
+        </Text>
+        <Text className="mt-2 text-sm" style={{ color: colors.textSecondary }}>
+          Quests Completed: {questCompletedToday} / {questTargetToday}
+        </Text>
+        <Text className="text-sm" style={{ color: colors.textSecondary }}>
+          XP Earned Today: {todayXp}
+        </Text>
+        <View className="mt-3">
+          <Text className="text-xs mb-1" style={{ color: colors.textTertiary }}>
+            XP Progress {todayXp} / {DAILY_XP_TARGET}
+          </Text>
           <ProgressBar progress={xpProgress} height={10} />
         </View>
+      </View>
 
-        {/* Stats */}
-        <View className="mt-8">
-          <View className="flex-row items-center mb-3">
-            <Ionicons name="stats-chart-outline" size={18} color={colors.text} />
-            <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
-              Stats
-            </Text>
-          </View>
-          <View className="flex-row flex-wrap gap-2">
-            {STAT_ORDER.map((stat) => (
-              <StatCard key={stat} stat={stat} value={effectiveStats[stat]} compact />
-            ))}
-          </View>
-        </View>
-
-        {/* Custom Quests (all today's quests – pending + completed) */}
-        {customQuests.length > 0 && (
-          <View className="mt-8">
-            <View className="flex-row items-center justify-between mb-3">
-              <View className="flex-row items-center">
-                <Ionicons name="add-circle-outline" size={18} color={colors.text} />
-                <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
-                  Custom Quests
-                </Text>
-              </View>
-              <Text className="text-xs" style={{ color: colors.textTertiary }}>
-                {customCompletedToday}/{MAX_CUSTOM_QUESTS_PER_DAY} today
-              </Text>
-            </View>
-            {customQuests.map((quest) => (
-              <CustomQuestCard
+      <View
+        className="rounded-2xl p-4 mt-4"
+        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+      >
+        <Text className="text-base font-semibold" style={{ color: colors.text }}>
+          Today&apos;s Quests
+        </Text>
+        {todayQuestItems.length === 0 ? (
+          <Text className="mt-3 text-sm italic" style={{ color: colors.textTertiary }}>
+            No quests yet. Add one to start your streak.
+          </Text>
+        ) : (
+          <View className="mt-2">
+            {todayQuestItems.map((quest) => (
+              <Pressable
                 key={quest.id}
-                quest={quest}
-                onComplete={() => handleCompleteCustom(quest.id)}
-                onDelete={() => { }}
-              />
+                onPress={() =>
+                  router.push({
+                    pathname: '/quest/[questType]/[questId]',
+                    params: { questType: quest.type, questId: quest.id },
+                  })
+                }
+                className="flex-row items-center py-2"
+              >
+                <Ionicons
+                  name={quest.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={17}
+                  color={quest.completed ? colors.success : colors.textTertiary}
+                />
+                <Text className="ml-2 text-sm" style={{ color: colors.text }}>
+                  {quest.title}
+                </Text>
+              </Pressable>
             ))}
           </View>
         )}
+      </View>
 
-        {/* Daily Habits */}
-        <View className="mt-8">
-          <View className="flex-row items-center justify-between mb-3">
-            <View className="flex-row items-center">
-              <Ionicons name="flash-outline" size={18} color={colors.text} />
-              <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
-                Today&apos;s Habits
-              </Text>
-            </View>
-            {habits.length > 0 && (
-              <Text className="text-xs" style={{ color: colors.textTertiary }}>
-                {habitCompletedCount}/{habits.length}
-              </Text>
-            )}
-          </View>
-          {habits.length === 0 ? (
-            <Text className="text-sm italic" style={{ color: colors.textTertiary }}>
-              No habits yet. Add some in the Quests tab!
+      <View
+        className="rounded-2xl p-4 mt-4"
+        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+      >
+        <Text className="text-base font-semibold" style={{ color: colors.text }}>
+          Level {user.level} Adventurer
+        </Text>
+        <View className="mt-2 flex-row flex-wrap">
+          {STAT_ORDER.map((stat) => (
+            <Text key={stat} className="mr-3 mb-1 text-sm" style={{ color: colors.textSecondary }}>
+              {stat} {effectiveStats[stat]}
             </Text>
-          ) : (
-            habits.map((habit) => (
-              <QuestCard
-                key={habit.id}
-                habit={habit}
-                streak={getStreak(habit.id)}
-                completedToday={isCompletedToday(habit.id)}
-                onComplete={() => handleCompleteHabit(habit.id)}
-              />
-            ))
-          )}
+          ))}
         </View>
-      </ScrollView>
+        <Text className="mt-1 text-sm" style={{ color: colors.accent }}>
+          Strongest Stat: {strongestStat}
+        </Text>
+      </View>
 
-      <QuestCompletionFeedback
-        visible={shouldShowQuestFeedback}
-        feedback={completionFeedback}
-        onHide={() => {
-          setShowCompletionFeedback(false);
-          setCompletionFeedback(null);
-        }}
-      />
+      <View
+        className="rounded-2xl p-4 mt-4"
+        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+      >
+        <Text className="text-base font-semibold" style={{ color: colors.text }}>
+          Tip of the Day
+        </Text>
+        <Text className="mt-2 text-sm" style={{ color: colors.textSecondary }}>
+          {message}
+        </Text>
+      </View>
 
-      <AchievementUnlockPopup
-        achievement={shouldShowAchievement ? activeAchievementUnlock : null}
-        onHide={dismissAchievementUnlock}
-      />
-
-      <ItemUnlockPopup
-        itemId={shouldShowItem ? activeItemUnlock : null}
-        onHide={dismissItemUnlock}
-      />
-
-      {/* Welcome / Name Modal */}
-      <Modal visible={showNameModal} animationType="fade" transparent>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: strongBackdropColor, padding: 24 }}
+      <View className="mt-5 flex-row gap-3">
+        <Pressable
+          onPress={() => router.push('/(tabs)/habits')}
+          className="flex-1 items-center py-3.5 rounded-xl"
+          style={({ pressed }) => ({
+            backgroundColor: colors.accent,
+            opacity: pressed ? 0.85 : 1,
+          })}
         >
-          <View
-            className="rounded-2xl p-6 w-full"
-            style={{
-              backgroundColor: colors.card,
-              borderWidth: 1,
-              borderColor: colors.cardBorder,
-              maxWidth: 340,
-            }}
-          >
-            {/* Icon */}
-            <View className="items-center mb-4">
-              <View
-                className="w-16 h-16 rounded-2xl items-center justify-center mb-3"
-                style={{ backgroundColor: colors.accent + '15' }}
-              >
-                <Ionicons name="person-outline" size={32} color={colors.accent} />
-              </View>
-              <Text className="text-xl font-bold text-center" style={{ color: colors.text }}>
-                Welcome, Adventurer!
-              </Text>
-              <Text className="text-sm text-center mt-1" style={{ color: colors.textSecondary }}>
-                What should we call you?
-              </Text>
-            </View>
-
-            {/* Name input */}
-            <TextInput
-              className="rounded-xl px-4 py-3.5 text-base mb-4"
-              style={{
-                backgroundColor: colors.inputBg,
-                color: colors.text,
-                borderWidth: 1,
-                borderColor: colors.inputBorder,
-                textAlign: 'center',
-                fontSize: 18,
-                fontWeight: '600',
-              }}
-              placeholder="Enter your name"
-              placeholderTextColor={colors.textTertiary}
-              value={nameInput}
-              onChangeText={setNameInput}
-              autoCapitalize="words"
-              autoFocus
-              maxLength={20}
-              onSubmitEditing={handleSetName}
-              returnKeyType="done"
-            />
-
-            {/* Submit button */}
-            <Pressable
-              onPress={handleSetName}
-              className="items-center py-3.5 rounded-xl"
-              style={({ pressed }) => ({
-                backgroundColor: nameInput.trim() ? colors.accent : colors.inputBg,
-                opacity: pressed ? 0.85 : 1,
-              })}
-            >
-              <Text
-                className="text-sm font-bold"
-                style={{ color: nameInput.trim() ? (isDarkTheme ? '#fff' : '#0f172a') : colors.textTertiary }}
-              >
-                Start Adventure
-              </Text>
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Settings */}
-      <SettingsModal
-        visible={showSettings}
-        onClose={() => setShowSettings(false)}
-        onResetTriggered={handleResetTriggered}
-      />
-
-      <AchievementsModal
-        visible={showAchievements}
-        achievements={achievements}
-        onClose={() => setShowAchievements(false)}
-      />
-
-      {/* SAO Reset Animation */}
-      <ResetAnimation
-        visible={showResetAnimation}
-        onAnimationComplete={handleAnimationComplete}
-      />
-
-      {/* Quest Start Animation */}
-      <QuestStartAnimation
-        visible={showQuestStart}
-        playerName={questStartName}
-        onAnimationComplete={() => setShowQuestStart(false)}
-      />
-    </>
+          <Text className="text-sm font-semibold text-white">+ Start Quest</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/(tabs)/dashboard')}
+          className="flex-1 items-center py-3.5 rounded-xl"
+          style={({ pressed }) => ({
+            backgroundColor: colors.inputBg,
+            borderWidth: 1,
+            borderColor: colors.inputBorder,
+            opacity: pressed ? 0.85 : 1,
+          })}
+        >
+          <Text className="text-sm font-semibold" style={{ color: colors.text }}>
+            Open Dashboard
+          </Text>
+        </Pressable>
+      </View>
+    </ScrollView>
   );
 }

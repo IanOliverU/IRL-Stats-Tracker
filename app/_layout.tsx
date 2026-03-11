@@ -34,6 +34,7 @@ export default function RootLayout() {
     <ThemeProvider value={themeGroup === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="quest/[questType]/[questId]" options={{ title: 'Quest Detail' }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
     </ThemeProvider>

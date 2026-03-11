@@ -4,8 +4,10 @@ import { checkAndUnlockAchievements, getAchievementStatuses } from '@/services/a
 import {
   getCompletedDayKeysForMonth,
   getCurrentWeekCompletionSummary,
+  getQuestStreakSummary,
   getRecentWeekCompletionSummaries,
   processPendingWeeklyBonus,
+  type QuestStreakSummary,
   type WeekCompletionSummary,
 } from '@/services/calendarService';
 import {
@@ -16,6 +18,7 @@ import {
   dbDeleteHabit,
   dbGetHabits,
   dbGetItems,
+  dbGetTodayQuestXp,
   dbGetTodayCustomQuests,
   dbGetTotalMissionXp,
   dbGetUser,
@@ -68,6 +71,8 @@ interface GameActions {
   getCompletedDaysForMonth: (year: number, monthIndex: number) => string[];
   getCurrentWeekSummary: () => WeekCompletionSummary;
   getRecentWeekSummaries: (weeksToInclude: number) => WeekCompletionSummary[];
+  getQuestStreakSummary: () => QuestStreakSummary;
+  getTodayQuestXp: () => number;
   dismissAchievementUnlock: () => void;
   dismissItemUnlock: () => void;
   refreshAchievements: () => void;
@@ -311,6 +316,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   getCurrentWeekSummary: () => getCurrentWeekCompletionSummary(),
   getRecentWeekSummaries: (weeksToInclude: number) =>
     getRecentWeekCompletionSummaries(weeksToInclude),
+  getQuestStreakSummary: () => getQuestStreakSummary(),
+  getTodayQuestXp: () => dbGetTodayQuestXp(),
 
   getStreak: (habitId: string) => getStreakForHabit(habitId),
   isCompletedToday: dbWasCompletedToday,

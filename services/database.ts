@@ -408,6 +408,34 @@ export function dbGetAllCompletedQuestDayKeys(): string[] {
   return (rows ?? []).map((row) => row.day);
 }
 
+/** Total XP earned today from completed habits + custom quests. */
+export function dbGetTodayQuestXp(): number {
+  const database = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const start = `${today}T00:00:00.000Z`;
+  const end = `${today}T23:59:59.999Z`;
+  const row = database.getFirstSync<{ total: number }>(
+    `
+      SELECT
+        COALESCE(
+          (SELECT SUM(h.xpReward + hl.bonusXp)
+           FROM habit_log hl
+           INNER JOIN habit h ON h.id = hl.habitId
+           WHERE hl.completedAt >= ? AND hl.completedAt <= ?),
+          0
+        ) +
+        COALESCE(
+          (SELECT SUM(cq.xpReward)
+           FROM custom_quest cq
+           WHERE cq.completedAt IS NOT NULL AND cq.completedAt >= ? AND cq.completedAt <= ?),
+          0
+        ) AS total
+    `,
+    [start, end, start, end]
+  );
+  return row?.total ?? 0;
+}
+
 export interface CompletedQuestEvent {
   completedAt: string;
   dayKey: string;
@@ -513,7 +541,7 @@ export function dbResetAllData(): void {
     DELETE FROM user;
     DELETE FROM custom_quest;
     DELETE FROM achievement_unlock;
-    DELETE FROM settings WHERE key LIKE 'weekly_bonus_processed_%';
+    DELETE FROM settings WHERE key LIKE 'weekly_bonus_processed_%' OR key = 'quest_longest_streak';
   `);
 
   // Re-seed user (name = null so welcome modal appears)
