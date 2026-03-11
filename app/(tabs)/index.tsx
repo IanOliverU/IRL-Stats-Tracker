@@ -10,6 +10,7 @@ import { ResetAnimation } from '@/components/ResetAnimation';
 import { SettingsModal } from '@/components/SettingsModal';
 import { StatCard } from '@/components/StatCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
+import { getModalBackdropColor } from '@/lib/modalBackdrop';
 import type { StatType } from '@/models';
 import { MAX_CUSTOM_QUESTS_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '@/models';
 import type { QuestCompletionFeedback as QuestCompletionFeedbackData } from '@/services/habitService';
@@ -56,6 +57,7 @@ export default function DashboardScreen() {
 
   const colors = useAppColors();
   const isDarkTheme = useIsDarkTheme();
+  const strongBackdropColor = getModalBackdropColor(colors.background, isDarkTheme, 'strong');
   const isFocused = useIsFocused();
   const effectiveStats = useMemo<Record<StatType, number>>(() => {
     const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
@@ -311,7 +313,7 @@ export default function DashboardScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.7)', padding: 24 }}
+          style={{ backgroundColor: strongBackdropColor, padding: 24 }}
         >
           <View
             className="rounded-2xl p-6 w-full"

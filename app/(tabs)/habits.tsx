@@ -4,6 +4,7 @@ import { ItemUnlockPopup } from '@/components/ItemUnlockPopup';
 import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
 import { QuestCard } from '@/components/QuestCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
+import { getModalBackdropColor } from '@/lib/modalBackdrop';
 import type { Difficulty, HabitFrequency, StatType } from '@/models';
 import {
   DIFFICULTY_COLORS,
@@ -14,7 +15,7 @@ import {
 } from '@/models';
 import type { QuestCompletionFeedback as QuestCompletionFeedbackData } from '@/services/habitService';
 import { useGameStore } from '@/store/useGameStore';
-import { useAppColors } from '@/store/useThemeStore';
+import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import React, { useState } from 'react';
@@ -61,7 +62,9 @@ export default function HabitsScreen() {
   const getCustomQuestsCompletedToday = useGameStore((s) => s.getCustomQuestsCompletedToday);
 
   const colors = useAppColors();
+  const isDarkTheme = useIsDarkTheme();
   const isFocused = useIsFocused();
+  const backdropColor = getModalBackdropColor(colors.background, isDarkTheme);
 
   // Habit modal state
   const [habitModalVisible, setHabitModalVisible] = useState(false);
@@ -119,6 +122,15 @@ export default function HabitsScreen() {
     if (!feedback) return;
     setCompletionFeedback(feedback);
     setShowCompletionFeedback(true);
+  };
+
+  const closeHabitModal = () => {
+    setHabitModalVisible(false);
+  };
+
+  const closeCustomModal = () => {
+    setCustomModalVisible(false);
+    setCustomTitle('');
   };
 
   const handleDeleteCustomQuest = (questId: string, questTitle: string) => {
@@ -307,16 +319,34 @@ export default function HabitsScreen() {
       />
 
       {/* ─── Add Habit Modal ─────────────────────────────── */}
-      <Modal visible={habitModalVisible} animationType="slide" transparent>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          className="flex-1 justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.5)', padding: 20 }}
-        >
-          <View
-            className="rounded-2xl p-5"
-            style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+      <Modal
+        visible={habitModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={closeHabitModal}
+      >
+        <View className="flex-1">
+          <Pressable
+            onPress={closeHabitModal}
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              backgroundColor: backdropColor,
+            }}
+          />
+          <KeyboardAvoidingView
+            pointerEvents="box-none"
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            className="flex-1 justify-center"
+            style={{ padding: 20 }}
           >
+            <View
+              className="rounded-2xl p-5"
+              style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+            >
             <Text className="text-lg font-bold mb-4" style={{ color: colors.text }}>
               New Habit
             </Text>
@@ -414,45 +444,64 @@ export default function HabitsScreen() {
               ))}
             </View>
 
-            <View className="flex-row gap-3 mt-2">
-              <Pressable
-                onPress={() => setHabitModalVisible(false)}
-                className="flex-1 items-center py-3.5 rounded-xl"
-                style={({ pressed }) => ({
-                  backgroundColor: colors.inputBg,
-                  opacity: pressed ? 0.85 : 1,
-                })}
-              >
-                <Text className="text-sm font-medium" style={{ color: colors.text }}>
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={handleAddHabit}
-                className="flex-1 items-center py-3.5 rounded-xl"
-                style={({ pressed }) => ({
-                  backgroundColor: colors.accent,
-                  opacity: pressed ? 0.85 : 1,
-                })}
-              >
-                <Text className="text-sm font-semibold text-white">Add Habit</Text>
-              </Pressable>
+              <View className="flex-row gap-3 mt-2">
+                <Pressable
+                  onPress={closeHabitModal}
+                  className="flex-1 items-center py-3.5 rounded-xl"
+                  style={({ pressed }) => ({
+                    backgroundColor: colors.inputBg,
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  <Text className="text-sm font-medium" style={{ color: colors.text }}>
+                    Cancel
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleAddHabit}
+                  className="flex-1 items-center py-3.5 rounded-xl"
+                  style={({ pressed }) => ({
+                    backgroundColor: colors.accent,
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  <Text className="text-sm font-semibold text-white">Add Habit</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* ─── Add Custom Quest Modal ──────────────────────── */}
-      <Modal visible={customModalVisible} animationType="slide" transparent>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          className="flex-1 justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.5)', padding: 20 }}
-        >
-          <View
-            className="rounded-2xl p-5"
-            style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+      <Modal
+        visible={customModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={closeCustomModal}
+      >
+        <View className="flex-1">
+          <Pressable
+            onPress={closeCustomModal}
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              backgroundColor: backdropColor,
+            }}
+          />
+          <KeyboardAvoidingView
+            pointerEvents="box-none"
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            className="flex-1 justify-center"
+            style={{ padding: 20 }}
           >
+            <View
+              className="rounded-2xl p-5"
+              style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+            >
             <Text className="text-lg font-bold mb-1" style={{ color: colors.text }}>
               Custom Quest
             </Text>
@@ -555,36 +604,34 @@ export default function HabitsScreen() {
               </Text>
             </View>
 
-            {/* Actions */}
-            <View className="flex-row gap-3">
-              <Pressable
-                onPress={() => {
-                  setCustomModalVisible(false);
-                  setCustomTitle('');
-                }}
-                className="flex-1 items-center py-3.5 rounded-xl"
-                style={({ pressed }) => ({
-                  backgroundColor: colors.inputBg,
-                  opacity: pressed ? 0.85 : 1,
-                })}
-              >
-                <Text className="text-sm font-medium" style={{ color: colors.text }}>
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={handleAddCustomQuest}
-                className="flex-1 items-center py-3.5 rounded-xl"
-                style={({ pressed }) => ({
-                  backgroundColor: colors.accent,
-                  opacity: pressed ? 0.85 : 1,
-                })}
-              >
-                <Text className="text-sm font-semibold text-white">Create Quest</Text>
-              </Pressable>
+              {/* Actions */}
+              <View className="flex-row gap-3">
+                <Pressable
+                  onPress={closeCustomModal}
+                  className="flex-1 items-center py-3.5 rounded-xl"
+                  style={({ pressed }) => ({
+                    backgroundColor: colors.inputBg,
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  <Text className="text-sm font-medium" style={{ color: colors.text }}>
+                    Cancel
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleAddCustomQuest}
+                  className="flex-1 items-center py-3.5 rounded-xl"
+                  style={({ pressed }) => ({
+                    backgroundColor: colors.accent,
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  <Text className="text-sm font-semibold text-white">Create Quest</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
     </View>
   );

@@ -1,5 +1,6 @@
 import type { AchievementStatus } from '@/models';
-import { useAppColors } from '@/store/useThemeStore';
+import { getModalBackdropColor } from '@/lib/modalBackdrop';
+import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
@@ -12,11 +13,24 @@ type AchievementsModalProps = {
 
 export function AchievementsModal({ visible, achievements, onClose }: AchievementsModalProps) {
   const colors = useAppColors();
+  const isDarkTheme = useIsDarkTheme();
   const unlockedCount = achievements.filter((achievement) => !!achievement.unlockedAt).length;
+  const backdropColor = getModalBackdropColor(colors.background, isDarkTheme);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View className="flex-1 justify-end" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View className="flex-1 justify-end">
+        <Pressable
+          onPress={onClose}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            backgroundColor: backdropColor,
+          }}
+        />
         <View
           className="rounded-t-3xl"
           style={{

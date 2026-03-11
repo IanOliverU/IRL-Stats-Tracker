@@ -1,3 +1,4 @@
+import { getModalBackdropColor } from '@/lib/modalBackdrop';
 import { ThemePicker } from '@/components/ThemePicker';
 import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,8 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
     const destructiveButtonPressedBg = isDarkTheme ? '#dc2626' : '#fca5a5';
     const destructiveButtonTextColor = isDarkTheme ? '#ffffff' : '#7f1d1d';
     const destructiveSecondaryText = isDarkTheme ? colors.textSecondary : '#4b5563';
+    const backdropColor = getModalBackdropColor(colors.background, isDarkTheme);
+    const confirmBackdropColor = getModalBackdropColor(colors.background, isDarkTheme, 'strong');
 
     const [showThemePicker, setShowThemePicker] = useState(false);
     const [showResetFlow, setShowResetFlow] = useState(false);
@@ -87,8 +90,19 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
 
     return (
         <>
-            <Modal visible={visible && !showThemePicker} animationType="slide" transparent>
-                <View className="flex-1 justify-end" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <Modal visible={visible && !showThemePicker} animationType="fade" transparent onRequestClose={onClose}>
+                <View className="flex-1 justify-end">
+                    <Pressable
+                        onPress={onClose}
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            right: 0,
+                            bottom: 0,
+                            left: 0,
+                            backgroundColor: backdropColor,
+                        }}
+                    />
                     <View
                         className="rounded-t-3xl"
                         style={{
@@ -241,8 +255,24 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                 </View>
             </Modal>
 
-            <Modal visible={showConfirmModal} animationType="fade" transparent>
-                <View className="flex-1 items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: 24 }}>
+            <Modal
+                visible={showConfirmModal}
+                animationType="fade"
+                transparent
+                onRequestClose={() => setShowConfirmModal(false)}
+            >
+                <View className="flex-1 items-center justify-center" style={{ padding: 24 }}>
+                    <Pressable
+                        onPress={() => setShowConfirmModal(false)}
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            right: 0,
+                            bottom: 0,
+                            left: 0,
+                            backgroundColor: confirmBackdropColor,
+                        }}
+                    />
                     <View
                         className="rounded-2xl p-6 w-full"
                         style={{
