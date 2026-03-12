@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "LifeRPG",
-    "slug": "liferpg",
+    "name": "Stats Tracker",
+    "slug": "stats-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon-clean.png",
@@ -40,7 +40,13 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Stats Tracker to access your location while tracking distance and route."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -154,7 +154,7 @@ export default function DashboardScreen() {
     setShowCompletionFeedback(true);
   };
 
-  const displayName = user.name || 'LifeRPG';
+  const displayName = user.name || 'Stats Tracker';
   const activeAchievementUnlock = achievementUnlockQueue[0] ?? null;
   const activeItemUnlock = itemUnlockQueue[0] ?? null;
   const shouldShowQuestFeedback = showCompletionFeedback;

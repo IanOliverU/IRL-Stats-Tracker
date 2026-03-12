@@ -20,6 +20,7 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'list.bullet.clipboard': 'checklist',
   calendar: 'calendar-month',
+  'map.fill': 'map',
   'person.fill': 'person',
   'bag.fill': 'inventory',
 } as IconMapping;

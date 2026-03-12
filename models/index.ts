@@ -1,5 +1,5 @@
 /**
- * LifeRPG data models
+ * Stats Tracker data models
  */
 
 export type StatType = 'STR' | 'INT' | 'WIS' | 'CHA' | 'VIT';
