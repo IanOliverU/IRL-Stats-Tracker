@@ -1,28 +1,46 @@
-import type { AchievementStatus, CustomQuest, Difficulty, Habit, HabitFrequency, Item, StatType, User } from '@/models';
+import type {
+  AchievementStatus,
+  CustomQuest,
+  Difficulty,
+  Habit,
+  HabitFrequency,
+  Item,
+  MapActivitySession,
+  MapActivityType,
+  MapCoordinate,
+  StatType,
+  User,
+} from '@/models';
 import { DIFFICULTY_XP, totalXpForLevel, xpRequiredForLevel } from '@/models';
 import { checkAndUnlockAchievements, getAchievementStatuses } from '@/services/achievementService';
 import {
   getCompletedDayKeysForMonth,
+  getCurrentWeeklyRecap,
   getCurrentWeekCompletionSummary,
   getQuestStreakSummary,
   getRecentWeekCompletionSummaries,
   processPendingWeeklyBonus,
   type QuestStreakSummary,
+  type WeeklyRecap,
   type WeekCompletionSummary,
 } from '@/services/calendarService';
 import {
   dbCountCompletedCustomQuestsToday,
   dbCreateCustomQuest,
   dbCreateHabit,
+  dbCreateMapActivitySession,
   dbDeleteCustomQuest,
   dbDeleteHabit,
+  dbGetCustomQuestById,
   dbGetHabits,
   dbGetItems,
+  dbGetMapActivitySessions,
   dbGetTodayQuestXp,
   dbGetTodayCustomQuests,
   dbGetTotalMissionXp,
   dbGetUser,
   dbResetAllData,
+  dbUpdateCustomQuest,
   dbUpdateUserName,
   dbWasCompletedToday,
   getDb
@@ -42,6 +60,7 @@ interface GameState {
   habits: Habit[];
   items: Item[];
   customQuests: CustomQuest[];
+  mapSessions: MapActivitySession[];
   achievements: AchievementStatus[];
   achievementUnlockQueue: AchievementStatus[];
   itemUnlockQueue: string[];
@@ -60,7 +79,20 @@ interface GameActions {
   isCompletedToday: (habitId: string) => boolean;
   getEffectiveStat: (stat: StatType) => number;
   // Custom quests
-  addCustomQuest: (payload: { title: string; statReward: StatType; difficulty: Difficulty }) => void;
+  addCustomQuest: (payload: {
+    title: string;
+    statReward: StatType;
+    difficulty: Difficulty;
+    source?: 'manual' | 'map_activity';
+    activityType?: MapActivityType | null;
+    linkedMapSessionId?: string | null;
+    distanceMeters?: number;
+  }) => CustomQuest | null;
+  updateCustomQuest: (
+    questId: string,
+    updates: Partial<Pick<CustomQuest, 'title' | 'difficulty' | 'xpReward' | 'activityType' | 'linkedMapSessionId' | 'distanceMeters'>>
+  ) => void;
+  refreshCustomQuests: () => void;
   completeCustomQuest: (questId: string) => CustomQuestResult;
   deleteCustomQuest: (questId: string) => void;
   getCustomQuestsCompletedToday: () => number;
@@ -73,9 +105,22 @@ interface GameActions {
   getRecentWeekSummaries: (weeksToInclude: number) => WeekCompletionSummary[];
   getQuestStreakSummary: () => QuestStreakSummary;
   getTodayQuestXp: () => number;
+  getCurrentWeeklyRecap: () => WeeklyRecap;
   dismissAchievementUnlock: () => void;
   dismissItemUnlock: () => void;
+  dismissItemUnlocks: (itemIds: string[]) => void;
   refreshAchievements: () => void;
+  addMapActivitySession: (payload: {
+    activityType: MapActivityType;
+    difficulty: Difficulty;
+    distanceMeters: number;
+    elapsedMs: number;
+    startedAt: string;
+    endedAt: string;
+    xpMultiplier: number;
+    routeCoordinates: MapCoordinate[];
+  }) => MapActivitySession;
+  refreshMapActivitySessions: () => void;
 }
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
@@ -83,6 +128,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   habits: [],
   items: [],
   customQuests: [],
+  mapSessions: [],
   achievements: [],
   achievementUnlockQueue: [],
   itemUnlockQueue: [],
@@ -98,6 +144,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       const habits = dbGetHabits();
       const items = dbGetItems();
       const customQuests = dbGetTodayCustomQuests();
+      const mapSessions = dbGetMapActivitySessions();
       checkAndUnlockAchievements();
       const achievements = getAchievementStatuses();
       set({
@@ -105,6 +152,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         habits,
         items,
         customQuests,
+        mapSessions,
         achievements,
         itemUnlockQueue: itemUnlocks.unlockedItemIds,
         hydrated: true,
@@ -185,12 +233,14 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const habits = dbGetHabits();
     const items = dbGetItems();
     const customQuests = dbGetTodayCustomQuests();
+    const mapSessions = dbGetMapActivitySessions();
     const achievements = getAchievementStatuses();
     set({
       user,
       habits,
       items,
       customQuests,
+      mapSessions,
       achievements,
       achievementUnlockQueue: [],
       itemUnlockQueue: [],
@@ -211,10 +261,15 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       difficulty: payload.difficulty,
       xpReward,
       createdAt: now,
+      source: payload.source ?? 'manual',
+      activityType: payload.activityType ?? null,
+      linkedMapSessionId: payload.linkedMapSessionId ?? null,
+      distanceMeters: payload.distanceMeters ?? 0,
     });
     const newlyUnlockedAchievements = checkAndUnlockAchievements();
     const achievements = getAchievementStatuses();
     const customQuests = dbGetTodayCustomQuests();
+    const createdQuest = dbGetCustomQuestById(id);
     set({
       customQuests,
       achievements,
@@ -224,6 +279,18 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       ],
       lastAction: get().lastAction + 1,
     });
+    return createdQuest;
+  },
+
+  updateCustomQuest: (questId, updates) => {
+    dbUpdateCustomQuest(questId, updates);
+    const customQuests = dbGetTodayCustomQuests();
+    set({ customQuests, lastAction: get().lastAction + 1 });
+  },
+
+  refreshCustomQuests: () => {
+    const customQuests = dbGetTodayCustomQuests();
+    set({ customQuests, lastAction: get().lastAction + 1 });
   },
 
   completeCustomQuest: (questId: string) => {
@@ -306,14 +373,52 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     });
   },
 
+  dismissItemUnlocks: (itemIds) => {
+    if (itemIds.length === 0) return;
+    const hiddenIds = new Set(itemIds);
+    set({
+      itemUnlockQueue: get().itemUnlockQueue.filter((itemId) => !hiddenIds.has(itemId)),
+      lastAction: get().lastAction + 1,
+    });
+  },
+
   refreshAchievements: () => {
     const achievements = getAchievementStatuses();
     set({ achievements, lastAction: get().lastAction + 1 });
   },
 
+  addMapActivitySession: (payload) => {
+    const session: MapActivitySession = {
+      id: `map_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      activityType: payload.activityType,
+      difficulty: payload.difficulty,
+      distanceMeters: payload.distanceMeters,
+      elapsedMs: payload.elapsedMs,
+      startedAt: payload.startedAt,
+      endedAt: payload.endedAt,
+      xpMultiplier: payload.xpMultiplier,
+      routeCoordinates: payload.routeCoordinates,
+    };
+
+    dbCreateMapActivitySession(session);
+    const mapSessions = dbGetMapActivitySessions();
+    set({
+      mapSessions,
+      lastAction: get().lastAction + 1,
+    });
+
+    return session;
+  },
+
+  refreshMapActivitySessions: () => {
+    const mapSessions = dbGetMapActivitySessions();
+    set({ mapSessions, lastAction: get().lastAction + 1 });
+  },
+
   getCompletedDaysForMonth: (year: number, monthIndex: number) =>
     getCompletedDayKeysForMonth(year, monthIndex),
   getCurrentWeekSummary: () => getCurrentWeekCompletionSummary(),
+  getCurrentWeeklyRecap: () => getCurrentWeeklyRecap(),
   getRecentWeekSummaries: (weeksToInclude: number) =>
     getRecentWeekCompletionSummaries(weeksToInclude),
   getQuestStreakSummary: () => getQuestStreakSummary(),

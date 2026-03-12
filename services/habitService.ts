@@ -1,4 +1,4 @@
-import type { CustomQuest, Habit, ItemDefinition, ItemSource, StatType, User } from '@/models';
+import type { CustomQuest, Difficulty, Habit, ItemDefinition, ItemSource, StatType, User } from '@/models';
 import {
   ITEM_DEFINITIONS,
   getItemDefinitionById,
@@ -12,11 +12,11 @@ import {
   dbCompleteCustomQuest,
   dbCountCompletedCustomQuestsToday,
   dbCustomQuestXpForStatToday,
+  dbGetCompletedQuestCountForStatToday,
   dbGetSetting,
   dbGetItems,
   dbGetLogsForHabit,
   dbGetUser,
-  dbHasCompletedQuestForStatToday,
   dbInsertHabitLog,
   dbSetSetting,
   dbUnlockItem,
@@ -32,6 +32,14 @@ export interface QuestCompletionFeedback {
   xpIntoLevel: number;
   xpRequired: number;
   streakDays?: number;
+  previousLevel: number;
+  newLevel: number;
+  statIncrease: {
+    stat: StatType;
+    amount: number;
+  };
+  unlockedItemIds?: string[];
+  instantXpFromItems?: number;
 }
 
 export interface HabitCompletionResult {
@@ -95,16 +103,42 @@ function isNightTime(date: Date): boolean {
   return hour >= 22;
 }
 
+function isMorningTime(date: Date): boolean {
+  const hour = date.getHours();
+  return hour < 12;
+}
+
+function matchesEffectDifficulty(effectDifficulty: Difficulty | undefined, difficulty: Difficulty | undefined): boolean {
+  return !effectDifficulty || effectDifficulty === difficulty;
+}
+
+function matchesEffectTimeOfDay(effectTimeOfDay: 'morning' | 'night' | undefined, completedAt: Date): boolean {
+  if (!effectTimeOfDay) return true;
+  if (effectTimeOfDay === 'morning') return isMorningTime(completedAt);
+  return isNightTime(completedAt);
+}
+
+function matchesQuestCountLimit(questCountLimit: number | undefined, completedStatQuestCountToday: number): boolean {
+  return !questCountLimit || completedStatQuestCountToday < questCountLimit;
+}
+
+interface ItemXpBonusResult {
+  bonusXp: number;
+  consumeOnUseItemIds: string[];
+}
+
 function calculateItemXpBonus(params: {
   baseXp: number;
   stat: StatType;
   source: ItemSource;
   completedAt: Date;
-  isFirstStatQuestToday: boolean;
-}): number {
+  completedStatQuestCountToday: number;
+  difficulty?: Difficulty;
+}): ItemXpBonusResult {
   const unlockedItems = dbGetItems().filter((item) => !!item.unlockedAt);
   let percentBonus = 0;
   let flatBonus = 0;
+  const consumeOnUseItemIds: string[] = [];
 
   for (const item of unlockedItems) {
     const definition = getItemDefinitionById(item.id);
@@ -112,24 +146,40 @@ function calculateItemXpBonus(params: {
     const effect = definition.effect;
     if (effect.stat && effect.stat !== params.stat) continue;
     if (!matchesEffectSource(effect.source, params.source)) continue;
+    if (!matchesEffectDifficulty(effect.difficulty, params.difficulty)) continue;
+    if (!matchesEffectTimeOfDay(effect.timeOfDay, params.completedAt)) continue;
+    if (!matchesQuestCountLimit(effect.questCountLimit, params.completedStatQuestCountToday)) continue;
 
-    if (effect.type === 'stat_xp_percent') {
+    if (effect.type === 'stat_xp_percent' || effect.type === 'conditional_stat_xp_percent') {
       percentBonus += effect.percent ?? 0;
       continue;
     }
 
-    if (effect.type === 'first_stat_quest_flat_xp' && params.isFirstStatQuestToday) {
+    if (effect.type === 'first_stat_quest_flat_xp' && params.completedStatQuestCountToday === 0) {
       flatBonus += effect.flatXp ?? 0;
       continue;
     }
 
     if (effect.type === 'night_stat_flat_xp' && isNightTime(params.completedAt)) {
       flatBonus += effect.flatXp ?? 0;
+      continue;
+    }
+
+    if (effect.type === 'conditional_stat_flat_xp') {
+      flatBonus += effect.flatXp ?? 0;
+      continue;
+    }
+
+    if (effect.type === 'next_quest_double_xp_once') {
+      const claimKey = `item_claimed_${definition.id}`;
+      if (dbGetSetting(claimKey)) continue;
+      flatBonus += params.baseXp;
+      consumeOnUseItemIds.push(definition.id);
     }
   }
 
   const percentXp = Math.floor((params.baseXp * percentBonus) / 100);
-  return percentXp + flatBonus;
+  return { bonusXp: percentXp + flatBonus, consumeOnUseItemIds };
 }
 
 function applyLevelAndXp(currentUser: User, xpToAdd: number): User | null {
@@ -243,15 +293,15 @@ export function completeHabit(habitId: string, habit: Habit): HabitCompletionRes
   const nextStreak = prevStreak + 1;
   const bonusXp = getStreakBonusXp(nextStreak);
   const now = new Date();
-  const firstStatQuestToday = !dbHasCompletedQuestForStatToday(habit.statReward);
+  const completedStatQuestCountToday = dbGetCompletedQuestCountForStatToday(habit.statReward);
   const itemXpBonus = calculateItemXpBonus({
     baseXp: habit.xpReward,
     stat: habit.statReward,
     source: 'habit',
     completedAt: now,
-    isFirstStatQuestToday: firstStatQuestToday,
+    completedStatQuestCountToday,
   });
-  const questXpGained = habit.xpReward + itemXpBonus;
+  const questXpGained = habit.xpReward + itemXpBonus.bonusXp;
 
   const completedAt = now.toISOString();
   dbInsertHabitLog({
@@ -280,6 +330,10 @@ export function completeHabit(habitId: string, habit: Habit): HabitCompletionRes
     level: newLevel,
   });
 
+  for (const itemId of itemXpBonus.consumeOnUseItemIds) {
+    dbSetSetting(`item_claimed_${itemId}`, new Date().toISOString());
+  }
+
   const itemUnlocks = syncItemUnlocks();
   const updatedUser = dbGetUser();
   if (!updatedUser) return null;
@@ -292,6 +346,14 @@ export function completeHabit(habitId: string, habit: Habit): HabitCompletionRes
       xpIntoLevel: updatedUser.xp - totalXpForLevel(updatedUser.level),
       xpRequired: xpRequiredForLevel(updatedUser.level),
       streakDays: nextStreak,
+      previousLevel: currentLevel,
+      newLevel: updatedUser.level,
+      statIncrease: {
+        stat: habit.statReward,
+        amount: 1,
+      },
+      unlockedItemIds: itemUnlocks.unlockedItemIds,
+      instantXpFromItems: itemUnlocks.instantXpAwarded,
     },
     unlockedItemIds: itemUnlocks.unlockedItemIds,
     instantXpFromItems: itemUnlocks.instantXpAwarded,
@@ -340,15 +402,16 @@ export function completeCustomQuest(quest: CustomQuest): CustomQuestResult {
 
   // Complete the quest in DB
   const now = new Date();
-  const firstStatQuestToday = !dbHasCompletedQuestForStatToday(quest.statReward);
+  const completedStatQuestCountToday = dbGetCompletedQuestCountForStatToday(quest.statReward);
   const itemXpBonus = calculateItemXpBonus({
     baseXp: quest.xpReward,
     stat: quest.statReward,
     source: 'custom',
     completedAt: now,
-    isFirstStatQuestToday: firstStatQuestToday,
+    completedStatQuestCountToday,
+    difficulty: quest.difficulty,
   });
-  const questXpGained = quest.xpReward + itemXpBonus;
+  const questXpGained = quest.xpReward + itemXpBonus.bonusXp;
 
   dbCompleteCustomQuest(quest.id);
 
@@ -362,6 +425,12 @@ export function completeCustomQuest(quest: CustomQuest): CustomQuestResult {
         xpGained: questXpGained,
         xpIntoLevel: 0,
         xpRequired: 0,
+        previousLevel: 1,
+        newLevel: 1,
+        statIncrease: {
+          stat: quest.statReward,
+          amount: 1,
+        },
       },
     };
   }
@@ -385,6 +454,10 @@ export function completeCustomQuest(quest: CustomQuest): CustomQuestResult {
     level: newLevel,
   });
 
+  for (const itemId of itemXpBonus.consumeOnUseItemIds) {
+    dbSetSetting(`item_claimed_${itemId}`, new Date().toISOString());
+  }
+
   const itemUnlocks = syncItemUnlocks();
   const updatedUser = dbGetUser();
   if (!updatedUser) {
@@ -395,6 +468,14 @@ export function completeCustomQuest(quest: CustomQuest): CustomQuestResult {
         xpGained: questXpGained,
         xpIntoLevel: 0,
         xpRequired: 0,
+        previousLevel: currentLevel,
+        newLevel: newLevel,
+        statIncrease: {
+          stat: quest.statReward,
+          amount: 1,
+        },
+        unlockedItemIds: itemUnlocks.unlockedItemIds,
+        instantXpFromItems: itemUnlocks.instantXpAwarded,
       },
       unlockedItemIds: itemUnlocks.unlockedItemIds,
       instantXpFromItems: itemUnlocks.instantXpAwarded,
@@ -408,6 +489,14 @@ export function completeCustomQuest(quest: CustomQuest): CustomQuestResult {
       xpGained: questXpGained,
       xpIntoLevel: updatedUser.xp - totalXpForLevel(updatedUser.level),
       xpRequired: xpRequiredForLevel(updatedUser.level),
+      previousLevel: currentLevel,
+      newLevel: updatedUser.level,
+      statIncrease: {
+        stat: quest.statReward,
+        amount: 1,
+      },
+      unlockedItemIds: itemUnlocks.unlockedItemIds,
+      instantXpFromItems: itemUnlocks.instantXpAwarded,
     },
     unlockedItemIds: itemUnlocks.unlockedItemIds,
     instantXpFromItems: itemUnlocks.instantXpAwarded,

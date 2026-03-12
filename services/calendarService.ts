@@ -1,5 +1,7 @@
+import type { StatType } from '@/models';
 import { totalXpForLevel, weeklyBonusForCompletedDays, xpRequiredForLevel } from '@/models';
 import {
+  dbGetCompletedQuestEvents,
   dbGetAllCompletedQuestDayKeys,
   dbGetCompletedDayKeysBetween,
   dbGetFirstQuestCompletionAt,
@@ -32,6 +34,19 @@ export interface QuestStreakSummary {
   currentStreak: number;
   longestStreak: number;
   lastCompletedDayKey: string | null;
+}
+
+export interface WeeklyRecap {
+  weekStartKey: string;
+  weekEndKey: string;
+  totalQuestsCompleted: number;
+  totalXpEarned: number;
+  strongestStat: StatType | null;
+  strongestStatXp: number;
+  currentStreak: number;
+  consistencyPercent: number;
+  completedDays: number;
+  weeklyBonusXp: number;
 }
 
 function formatDateKeyUtc(date: Date): string {
@@ -175,6 +190,46 @@ export function getWeekCompletionSummary(
 
 export function getCurrentWeekCompletionSummary(referenceDate: Date = new Date()): WeekCompletionSummary {
   return getWeekCompletionSummary(getCurrentWeekStartKey(referenceDate), referenceDate);
+}
+
+export function getWeeklyRecap(weekStartKey: string, referenceDate: Date = new Date()): WeeklyRecap {
+  const summary = getWeekCompletionSummary(weekStartKey, referenceDate);
+  const events = dbGetCompletedQuestEvents().filter(
+    (event) => event.dayKey >= summary.weekStartKey && event.dayKey <= summary.weekEndKey
+  );
+  const xpByStat: Record<StatType, number> = {
+    STR: 0,
+    INT: 0,
+    WIS: 0,
+    CHA: 0,
+    VIT: 0,
+  };
+
+  let totalXpEarned = 0;
+  for (const event of events) {
+    xpByStat[event.statReward] += event.xpReward;
+    totalXpEarned += event.xpReward;
+  }
+
+  const strongestStat = (Object.entries(xpByStat) as [StatType, number][])
+    .sort((a, b) => b[1] - a[1])[0] ?? null;
+
+  return {
+    weekStartKey: summary.weekStartKey,
+    weekEndKey: summary.weekEndKey,
+    totalQuestsCompleted: events.length,
+    totalXpEarned,
+    strongestStat: strongestStat && strongestStat[1] > 0 ? strongestStat[0] : null,
+    strongestStatXp: strongestStat?.[1] ?? 0,
+    currentStreak: getQuestStreakSummary(referenceDate).currentStreak,
+    consistencyPercent: summary.consistencyPercent,
+    completedDays: summary.completedDays,
+    weeklyBonusXp: summary.bonusXp,
+  };
+}
+
+export function getCurrentWeeklyRecap(referenceDate: Date = new Date()): WeeklyRecap {
+  return getWeeklyRecap(getCurrentWeekStartKey(referenceDate), referenceDate);
 }
 
 export function getQuestStreakSummary(referenceDate: Date = new Date()): QuestStreakSummary {

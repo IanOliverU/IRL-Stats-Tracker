@@ -1,9 +1,10 @@
 import { ItemCard } from '@/components/ItemCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
+import { getItemRarityById, type ItemRarity } from '@/models';
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 export default function InventoryScreen() {
@@ -14,6 +15,21 @@ export default function InventoryScreen() {
 
   const unlocked = items.filter((i) => i.unlockedAt);
   const locked = items.filter((i) => !i.unlockedAt);
+  const rarityOrder: ItemRarity[] = ['Common', 'Rare', 'Epic', 'Legendary'];
+  const rarityCounts = useMemo(() => {
+    const counts: Record<ItemRarity, number> = {
+      Common: 0,
+      Rare: 0,
+      Epic: 0,
+      Legendary: 0,
+    };
+
+    for (const item of items) {
+      counts[getItemRarityById(item.id)] += 1;
+    }
+
+    return counts;
+  }, [items]);
 
   return (
     <ScrollView
@@ -25,8 +41,33 @@ export default function InventoryScreen() {
         Inventory
       </Text>
       <Text className="text-sm mb-6" style={{ color: colors.textSecondary }}>
-        Unlock rewards through levels and quest milestones. Many items boost XP gain.
+        Unlock collectible rewards through levels and quest milestones. Stronger tiers feel rarer for a reason.
       </Text>
+
+      <View
+        className="rounded-xl p-4 mb-5"
+        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+      >
+        <View className="flex-row items-center mb-3">
+          <Ionicons name="diamond-outline" size={18} color={colors.warning} />
+          <Text className="text-base font-semibold ml-2" style={{ color: colors.text }}>
+            Rarity Breakdown
+          </Text>
+        </View>
+        <View className="flex-row flex-wrap gap-2">
+          {rarityOrder.map((rarity) => (
+            <View
+              key={rarity}
+              className="rounded-full px-3 py-1.5"
+              style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder }}
+            >
+              <Text className="text-xs font-semibold" style={{ color: colors.text }}>
+                {rarity}: {rarityCounts[rarity]}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
 
       {unlocked.length > 0 && (
         <View className="mb-4">

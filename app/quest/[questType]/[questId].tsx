@@ -1,3 +1,4 @@
+import { LevelUpModal } from '@/components/LevelUpModal';
 import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
 import { useGameHydration } from '@/hooks/useGameHydration';
 import { DIFFICULTY_LABELS } from '@/models';
@@ -19,11 +20,13 @@ export default function QuestDetailScreen() {
   const customQuests = useGameStore((s) => s.customQuests);
   const completeHabit = useGameStore((s) => s.completeHabit);
   const completeCustomQuest = useGameStore((s) => s.completeCustomQuest);
+  const dismissItemUnlocks = useGameStore((s) => s.dismissItemUnlocks);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
   const getStreak = useGameStore((s) => s.getStreak);
 
   const [feedback, setFeedback] = useState<QuestCompletionFeedbackData | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [levelUpFeedback, setLevelUpFeedback] = useState<QuestCompletionFeedbackData | null>(null);
 
   const habit = useMemo(() => {
     if (questType !== 'habit' || !questId) return null;
@@ -68,25 +71,49 @@ export default function QuestDetailScreen() {
   }
 
   const completed = isHabit ? isCompletedToday(habit!.id) : !!customQuest!.completedAt;
+  const isTrackingMapQuest = isCustom && !!customQuest && customQuest.source === 'map_activity' && !completed;
 
   const handleComplete = () => {
     if (isHabit && habit && !completed) {
       const result = completeHabit(habit.id);
       if (!result) return;
+      if (result.newLevel > result.previousLevel) {
+        setLevelUpFeedback(result);
+        setShowFeedback(false);
+        setFeedback(null);
+        return;
+      }
       setFeedback(result);
       setShowFeedback(true);
       return;
     }
 
-    if (isCustom && customQuest && !completed) {
+    if (isCustom && customQuest && !completed && !isTrackingMapQuest) {
       const result = completeCustomQuest(customQuest.id);
       if (!result.success) {
         Alert.alert('Limit Reached', result.message);
         return;
       }
+      if (result.feedback.newLevel > result.feedback.previousLevel) {
+        setLevelUpFeedback(result.feedback);
+        setShowFeedback(false);
+        setFeedback(null);
+        return;
+      }
       setFeedback(result.feedback);
       setShowFeedback(true);
     }
+  };
+
+  const handleCloseLevelUpModal = () => {
+    dismissItemUnlocks(levelUpFeedback?.unlockedItemIds ?? []);
+    setLevelUpFeedback(null);
+  };
+
+  const handleViewReward = () => {
+    dismissItemUnlocks(levelUpFeedback?.unlockedItemIds ?? []);
+    setLevelUpFeedback(null);
+    router.push('/(tabs)/inventory');
   };
 
   return (
@@ -146,6 +173,16 @@ export default function QuestDetailScreen() {
               <Text className="text-sm mb-1" style={{ color: colors.textSecondary }}>
                 Difficulty: {DIFFICULTY_LABELS[customQuest.difficulty]}
               </Text>
+              {customQuest.source === 'map_activity' ? (
+                <>
+                  <Text className="text-sm mb-1" style={{ color: colors.textSecondary }}>
+                    Activity: {customQuest.activityType === 'run' ? 'Run Session' : 'Walk Session'}
+                  </Text>
+                  <Text className="text-sm mb-1" style={{ color: colors.textSecondary }}>
+                    Distance Tracked: {(customQuest.distanceMeters / 1000).toFixed(2)} km
+                  </Text>
+                </>
+              ) : null}
               <Text className="text-sm" style={{ color: colors.textSecondary }}>
                 Created: {new Date(customQuest.createdAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
               </Text>
@@ -156,19 +193,22 @@ export default function QuestDetailScreen() {
         <View className="mt-5 flex-row gap-3">
           <Pressable
             onPress={handleComplete}
-            disabled={completed}
+            disabled={completed || isTrackingMapQuest}
             className="flex-1 items-center py-3.5 rounded-xl"
             style={({ pressed }) => ({
-              backgroundColor: completed ? colors.inputBg : colors.accent,
+              backgroundColor: completed || isTrackingMapQuest ? colors.inputBg : colors.accent,
               opacity: pressed ? 0.85 : 1,
             })}
           >
-            <Text className="text-sm font-semibold" style={{ color: completed ? colors.textTertiary : '#fff' }}>
-              {completed ? 'Completed Today' : 'Complete Quest'}
+            <Text
+              className="text-sm font-semibold"
+              style={{ color: completed || isTrackingMapQuest ? colors.textTertiary : '#fff' }}
+            >
+              {completed ? 'Completed Today' : isTrackingMapQuest ? 'Completes on Session Finish' : 'Complete Quest'}
             </Text>
           </Pressable>
           <Pressable
-            onPress={() => router.push('/(tabs)/habits')}
+            onPress={() => router.push(isTrackingMapQuest ? '/(tabs)/maps' : '/(tabs)/habits')}
             className="flex-1 items-center py-3.5 rounded-xl"
             style={({ pressed }) => ({
               backgroundColor: colors.inputBg,
@@ -178,7 +218,7 @@ export default function QuestDetailScreen() {
             })}
           >
             <Text className="text-sm font-semibold" style={{ color: colors.text }}>
-              Open Quests
+              {isTrackingMapQuest ? 'Open Maps' : 'Open Quests'}
             </Text>
           </Pressable>
         </View>
@@ -191,6 +231,13 @@ export default function QuestDetailScreen() {
           setShowFeedback(false);
           setFeedback(null);
         }}
+      />
+
+      <LevelUpModal
+        visible={!!levelUpFeedback}
+        feedback={levelUpFeedback}
+        onContinue={handleCloseLevelUpModal}
+        onViewReward={handleViewReward}
       />
     </>
   );

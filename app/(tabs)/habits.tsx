@@ -1,6 +1,7 @@
 import { AchievementUnlockPopup } from '@/components/AchievementUnlockPopup';
 import { CustomQuestCard } from '@/components/CustomQuestCard';
 import { ItemUnlockPopup } from '@/components/ItemUnlockPopup';
+import { LevelUpModal } from '@/components/LevelUpModal';
 import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
 import { QuestCard } from '@/components/QuestCard';
 import { useGameHydration } from '@/hooks/useGameHydration';
@@ -18,6 +19,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -45,6 +47,7 @@ const STAT_ICONS: Record<StatType, keyof typeof Ionicons.glyphMap> = {
 
 export default function HabitsScreen() {
   useGameHydration();
+  const router = useRouter();
   const habits = useGameStore((s) => s.habits);
   const customQuests = useGameStore((s) => s.customQuests);
   const achievementUnlockQueue = useGameStore((s) => s.achievementUnlockQueue);
@@ -56,6 +59,7 @@ export default function HabitsScreen() {
   const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
   const dismissAchievementUnlock = useGameStore((s) => s.dismissAchievementUnlock);
   const dismissItemUnlock = useGameStore((s) => s.dismissItemUnlock);
+  const dismissItemUnlocks = useGameStore((s) => s.dismissItemUnlocks);
   const deleteCustomQuest = useGameStore((s) => s.deleteCustomQuest);
   const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
@@ -80,6 +84,7 @@ export default function HabitsScreen() {
   const [customDifficulty, setCustomDifficulty] = useState<Difficulty>('medium');
   const [completionFeedback, setCompletionFeedback] = useState<QuestCompletionFeedbackData | null>(null);
   const [showCompletionFeedback, setShowCompletionFeedback] = useState(false);
+  const [levelUpFeedback, setLevelUpFeedback] = useState<QuestCompletionFeedbackData | null>(null);
 
   const handleAddHabit = () => {
     const t = title.trim();
@@ -113,6 +118,12 @@ export default function HabitsScreen() {
       Alert.alert('Limit Reached', result.message);
       return;
     }
+    if (result.feedback.newLevel > result.feedback.previousLevel) {
+      setLevelUpFeedback(result.feedback);
+      setShowCompletionFeedback(false);
+      setCompletionFeedback(null);
+      return;
+    }
     setCompletionFeedback(result.feedback);
     setShowCompletionFeedback(true);
   };
@@ -120,8 +131,25 @@ export default function HabitsScreen() {
   const handleCompleteHabit = (habitId: string) => {
     const feedback = completeHabit(habitId);
     if (!feedback) return;
+    if (feedback.newLevel > feedback.previousLevel) {
+      setLevelUpFeedback(feedback);
+      setShowCompletionFeedback(false);
+      setCompletionFeedback(null);
+      return;
+    }
     setCompletionFeedback(feedback);
     setShowCompletionFeedback(true);
+  };
+
+  const handleCloseLevelUpModal = () => {
+    dismissItemUnlocks(levelUpFeedback?.unlockedItemIds ?? []);
+    setLevelUpFeedback(null);
+  };
+
+  const handleViewReward = () => {
+    dismissItemUnlocks(levelUpFeedback?.unlockedItemIds ?? []);
+    setLevelUpFeedback(null);
+    router.push('/(tabs)/inventory');
   };
 
   const closeHabitModal = () => {
@@ -154,9 +182,14 @@ export default function HabitsScreen() {
   const activeAchievementUnlock = achievementUnlockQueue[0] ?? null;
   const activeItemUnlock = itemUnlockQueue[0] ?? null;
   const shouldShowQuestFeedback = showCompletionFeedback;
-  const shouldShowAchievement = isFocused && !shouldShowQuestFeedback && !!activeAchievementUnlock;
+  const shouldShowLevelUp = isFocused && !!levelUpFeedback;
+  const shouldShowAchievement = isFocused && !shouldShowQuestFeedback && !shouldShowLevelUp && !!activeAchievementUnlock;
   const shouldShowItem =
-    isFocused && !shouldShowQuestFeedback && !activeAchievementUnlock && !!activeItemUnlock;
+    isFocused &&
+    !shouldShowQuestFeedback &&
+    !shouldShowLevelUp &&
+    !activeAchievementUnlock &&
+    !!activeItemUnlock;
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
@@ -306,6 +339,13 @@ export default function HabitsScreen() {
           setShowCompletionFeedback(false);
           setCompletionFeedback(null);
         }}
+      />
+
+      <LevelUpModal
+        visible={shouldShowLevelUp}
+        feedback={levelUpFeedback}
+        onContinue={handleCloseLevelUpModal}
+        onViewReward={handleViewReward}
       />
 
       <AchievementUnlockPopup

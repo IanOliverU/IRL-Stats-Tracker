@@ -53,11 +53,17 @@ export type ItemCategory = 'stat' | 'cosmetic' | 'utility';
 export type ItemSource = 'any' | 'habit' | 'custom';
 export type ItemEffectType =
   | 'stat_xp_percent'
+  | 'conditional_stat_xp_percent'
   | 'first_stat_quest_flat_xp'
   | 'night_stat_flat_xp'
+  | 'conditional_stat_flat_xp'
   | 'instant_xp_once'
+  | 'next_quest_double_xp_once'
+  | 'quest_voucher'
   | 'streak_shield'
   | 'cosmetic';
+
+export type ItemTimeOfDay = 'morning' | 'night';
 
 export interface ItemUnlockRule {
   level?: number;
@@ -74,6 +80,9 @@ export interface ItemEffect {
   percent?: number;
   flatXp?: number;
   source?: ItemSource;
+  difficulty?: Difficulty;
+  timeOfDay?: ItemTimeOfDay;
+  questCountLimit?: number;
   instantXp?: number;
 }
 
@@ -89,6 +98,8 @@ export interface ItemDefinition {
   flavor: string;
   effect: ItemEffect;
 }
+
+export type ItemRarity = 'Common' | 'Rare' | 'Epic' | 'Legendary';
 
 export const ITEM_DEFINITIONS: ItemDefinition[] = [
   {
@@ -331,10 +342,427 @@ export const ITEM_DEFINITIONS: ItemDefinition[] = [
     flavor: 'Your growth now shows.',
     effect: { type: 'cosmetic' },
   },
+  {
+    id: 'resistance-bands',
+    name: 'Resistance Bands',
+    category: 'stat',
+    stat: 'STR',
+    icon: 'fitness-outline',
+    unlockRule: { statQuestCount: { stat: 'STR', count: 10 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 10 STR quests',
+    effectLabel: '+5 STR XP on home workout quests',
+    flavor: 'Portable strength for daily reps.',
+    effect: { type: 'conditional_stat_flat_xp', stat: 'STR', flatXp: 5, source: 'habit' },
+  },
+  {
+    id: 'wrist-wraps',
+    name: 'Wrist Wraps',
+    category: 'stat',
+    stat: 'STR',
+    icon: 'bandage-outline',
+    unlockRule: { level: 6, mode: 'level_only' },
+    unlockLabel: 'Reach Level 6',
+    effectLabel: '+10% STR XP from hard difficulty STR quests',
+    flavor: 'Lock in your lifts.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'STR', percent: 10, source: 'custom', difficulty: 'hard' },
+  },
+  {
+    id: 'lifting-belt',
+    name: 'Lifting Belt',
+    category: 'stat',
+    stat: 'STR',
+    icon: 'remove-circle-outline',
+    unlockRule: { statQuestCount: { stat: 'STR', count: 20 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 20 STR quests',
+    effectLabel: '+15 STR XP on gym quests completed after 30 minutes or more',
+    flavor: 'Heavy effort deserves support.',
+    effect: { type: 'conditional_stat_flat_xp', stat: 'STR', flatXp: 15, source: 'habit' },
+  },
+  {
+    id: 'training-tank',
+    name: 'Training Tank',
+    category: 'stat',
+    stat: 'STR',
+    icon: 'shirt-outline',
+    unlockRule: { level: 7, mode: 'level_only' },
+    unlockLabel: 'Reach Level 7',
+    effectLabel: '+5% STR XP for the first 2 STR quests each day',
+    flavor: 'Start strong before the day pushes back.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'STR', percent: 5, questCountLimit: 2, source: 'any' },
+  },
+  {
+    id: 'battle-rope',
+    name: 'Battle Rope',
+    category: 'stat',
+    stat: 'STR',
+    icon: 'flash-outline',
+    unlockRule: { level: 10, mode: 'level_only' },
+    unlockLabel: 'Reach Level 10',
+    effectLabel: '+15% STR XP from intense STR quests',
+    flavor: 'Built for all-out effort.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'STR', percent: 15, source: 'custom', difficulty: 'hard' },
+  },
+  {
+    id: 'study-planner',
+    name: 'Study Planner',
+    category: 'stat',
+    stat: 'INT',
+    icon: 'calendar-outline',
+    unlockRule: { statQuestCount: { stat: 'INT', count: 10 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 10 INT quests',
+    effectLabel: '+5 INT XP on first INT quest of the day',
+    flavor: 'A clear plan compounds effort.',
+    effect: { type: 'first_stat_quest_flat_xp', stat: 'INT', flatXp: 5, source: 'any' },
+  },
+  {
+    id: 'desk-lamp',
+    name: 'Desk Lamp',
+    category: 'stat',
+    stat: 'INT',
+    icon: 'bulb-outline',
+    unlockRule: { level: 6, mode: 'level_only' },
+    unlockLabel: 'Reach Level 6',
+    effectLabel: '+10% INT XP from late-night study quests',
+    flavor: 'Focus survives the late hours.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'INT', percent: 10, timeOfDay: 'night', source: 'any' },
+  },
+  {
+    id: 'focus-timer',
+    name: 'Focus Timer',
+    category: 'stat',
+    stat: 'INT',
+    icon: 'timer-outline',
+    unlockRule: { statQuestCount: { stat: 'INT', count: 20 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 20 INT quests',
+    effectLabel: '+15 INT XP on INT quests tagged as focused work',
+    flavor: 'Deep work needs boundaries.',
+    effect: { type: 'conditional_stat_flat_xp', stat: 'INT', flatXp: 15, source: 'custom' },
+  },
+  {
+    id: 'tablet-stand',
+    name: 'Tablet Stand',
+    category: 'stat',
+    stat: 'INT',
+    icon: 'tablet-landscape-outline',
+    unlockRule: { level: 7, mode: 'level_only' },
+    unlockLabel: 'Reach Level 7',
+    effectLabel: '+5% INT XP from consecutive INT quests in one day',
+    flavor: 'Keep the flow state stable.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'INT', percent: 5, questCountLimit: 2, source: 'any' },
+  },
+  {
+    id: 'neural-headset',
+    name: 'Neural Headset',
+    category: 'stat',
+    stat: 'INT',
+    icon: 'hardware-chip-outline',
+    unlockRule: { level: 10, mode: 'level_only' },
+    unlockLabel: 'Reach Level 10',
+    effectLabel: '+15% INT XP from custom INT quests',
+    flavor: 'Signal over noise.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'INT', percent: 15, source: 'custom' },
+  },
+  {
+    id: 'book-sleeve',
+    name: 'Book Sleeve',
+    category: 'stat',
+    stat: 'WIS',
+    icon: 'book-outline',
+    unlockRule: { statQuestCount: { stat: 'WIS', count: 10 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 10 WIS quests',
+    effectLabel: '+5 WIS XP on reading quests over 20 minutes',
+    flavor: 'Protect the pages, keep the pace.',
+    effect: { type: 'conditional_stat_flat_xp', stat: 'WIS', flatXp: 5, source: 'habit' },
+  },
+  {
+    id: 'tea-mug',
+    name: 'Tea Mug',
+    category: 'stat',
+    stat: 'WIS',
+    icon: 'cafe-outline',
+    unlockRule: { level: 6, mode: 'level_only' },
+    unlockLabel: 'Reach Level 6',
+    effectLabel: '+10% WIS XP on morning reading quests',
+    flavor: 'Slow start, sharp mind.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'WIS', percent: 10, timeOfDay: 'morning', source: 'any' },
+  },
+  {
+    id: 'fountain-pen',
+    name: 'Fountain Pen',
+    category: 'stat',
+    stat: 'WIS',
+    icon: 'create-outline',
+    unlockRule: { statQuestCount: { stat: 'WIS', count: 20 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 20 WIS quests',
+    effectLabel: '+15 WIS XP on reflection or learning quests',
+    flavor: 'Thoughts sharpen when written down.',
+    effect: { type: 'conditional_stat_flat_xp', stat: 'WIS', flatXp: 15, source: 'any' },
+  },
+  {
+    id: 'study-candle',
+    name: 'Study Candle',
+    category: 'stat',
+    stat: 'WIS',
+    icon: 'flame-outline',
+    unlockRule: { level: 7, mode: 'level_only' },
+    unlockLabel: 'Reach Level 7',
+    effectLabel: '+5% WIS XP on the first 2 WIS quests each day',
+    flavor: 'Ritual turns repetition into growth.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'WIS', percent: 5, questCountLimit: 2, source: 'any' },
+  },
+  {
+    id: 'sage-cloak',
+    name: 'Sage Cloak',
+    category: 'stat',
+    stat: 'WIS',
+    icon: 'sparkles-outline',
+    unlockRule: { level: 10, mode: 'level_only' },
+    unlockLabel: 'Reach Level 10',
+    effectLabel: '+15% WIS XP from reading and learning quests',
+    flavor: 'Wisdom carried with intent.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'WIS', percent: 15, source: 'any' },
+  },
+  {
+    id: 'calling-card',
+    name: 'Calling Card',
+    category: 'stat',
+    stat: 'CHA',
+    icon: 'mail-open-outline',
+    unlockRule: { statQuestCount: { stat: 'CHA', count: 10 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 10 CHA quests',
+    effectLabel: '+5 CHA XP on first CHA quest of the day',
+    flavor: 'Make the introduction count.',
+    effect: { type: 'first_stat_quest_flat_xp', stat: 'CHA', flatXp: 5, source: 'any' },
+  },
+  {
+    id: 'smart-watch',
+    name: 'Smart Watch',
+    category: 'stat',
+    stat: 'CHA',
+    icon: 'watch-outline',
+    unlockRule: { level: 6, mode: 'level_only' },
+    unlockLabel: 'Reach Level 6',
+    effectLabel: '+10% CHA XP from meetup or communication quests',
+    flavor: 'Stay in sync with the room.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'CHA', percent: 10, source: 'any' },
+  },
+  {
+    id: 'ring-light',
+    name: 'Ring Light',
+    category: 'stat',
+    stat: 'CHA',
+    icon: 'radio-outline',
+    unlockRule: { statQuestCount: { stat: 'CHA', count: 20 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 20 CHA quests',
+    effectLabel: '+15 CHA XP on speaking or content-related CHA quests',
+    flavor: 'Show up clear and on-brand.',
+    effect: { type: 'conditional_stat_flat_xp', stat: 'CHA', flatXp: 15, source: 'custom' },
+  },
+  {
+    id: 'blazer',
+    name: 'Blazer',
+    category: 'stat',
+    stat: 'CHA',
+    icon: 'business-outline',
+    unlockRule: { level: 7, mode: 'level_only' },
+    unlockLabel: 'Reach Level 7',
+    effectLabel: '+5% CHA XP on the first 2 CHA quests each day',
+    flavor: 'Confidence starts before you speak.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'CHA', percent: 5, questCountLimit: 2, source: 'any' },
+  },
+  {
+    id: 'crown-pin',
+    name: 'Crown Pin',
+    category: 'stat',
+    stat: 'CHA',
+    icon: 'diamond-outline',
+    unlockRule: { level: 10, mode: 'level_only' },
+    unlockLabel: 'Reach Level 10',
+    effectLabel: '+15% CHA XP from leadership and presentation quests',
+    flavor: 'Presence made visible.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'CHA', percent: 15, source: 'any' },
+  },
+  {
+    id: 'vitamin-pack',
+    name: 'Vitamin Pack',
+    category: 'stat',
+    stat: 'VIT',
+    icon: 'medical-outline',
+    unlockRule: { statQuestCount: { stat: 'VIT', count: 10 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 10 VIT quests',
+    effectLabel: '+5 VIT XP on first health quest of the day',
+    flavor: 'Small boosts, steady recovery.',
+    effect: { type: 'first_stat_quest_flat_xp', stat: 'VIT', flatXp: 5, source: 'any' },
+  },
+  {
+    id: 'running-cap',
+    name: 'Running Cap',
+    category: 'stat',
+    stat: 'VIT',
+    icon: 'sunny-outline',
+    unlockRule: { level: 6, mode: 'level_only' },
+    unlockLabel: 'Reach Level 6',
+    effectLabel: '+10% VIT XP from outdoor walk or run quests',
+    flavor: 'Forward motion in open air.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'VIT', percent: 10, source: 'habit' },
+  },
+  {
+    id: 'foam-roller',
+    name: 'Foam Roller',
+    category: 'stat',
+    stat: 'VIT',
+    icon: 'body-outline',
+    unlockRule: { statQuestCount: { stat: 'VIT', count: 20 }, mode: 'stat_only' },
+    unlockLabel: 'Complete 20 VIT quests',
+    effectLabel: '+15 VIT XP on recovery and stretching quests',
+    flavor: 'Reset the body to keep the streak alive.',
+    effect: { type: 'conditional_stat_flat_xp', stat: 'VIT', flatXp: 15, source: 'any' },
+  },
+  {
+    id: 'fitness-tracker',
+    name: 'Fitness Tracker',
+    category: 'stat',
+    stat: 'VIT',
+    icon: 'pulse-outline',
+    unlockRule: { level: 7, mode: 'level_only' },
+    unlockLabel: 'Reach Level 7',
+    effectLabel: '+5% VIT XP on the first 2 VIT quests each day',
+    flavor: 'Recovery improves when measured.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'VIT', percent: 5, questCountLimit: 2, source: 'any' },
+  },
+  {
+    id: 'guardian-emblem',
+    name: 'Guardian Emblem',
+    category: 'stat',
+    stat: 'VIT',
+    icon: 'shield-outline',
+    unlockRule: { level: 10, mode: 'level_only' },
+    unlockLabel: 'Reach Level 10',
+    effectLabel: '+15% VIT XP from health and recovery quests',
+    flavor: 'Built to endure.',
+    effect: { type: 'conditional_stat_xp_percent', stat: 'VIT', percent: 15, source: 'any' },
+  },
+  {
+    id: 'explorer-badge',
+    name: 'Explorer Badge',
+    category: 'cosmetic',
+    stat: 'CHA',
+    icon: 'compass-outline',
+    unlockRule: { level: 6, mode: 'level_only' },
+    unlockLabel: 'Reach Level 6',
+    effectLabel: 'Cosmetic only',
+    flavor: 'Marked by movement.',
+    effect: { type: 'cosmetic' },
+  },
+  {
+    id: 'hero-cape',
+    name: 'Hero Cape',
+    category: 'cosmetic',
+    stat: 'CHA',
+    icon: 'flag-outline',
+    unlockRule: { level: 8, mode: 'level_only' },
+    unlockLabel: 'Reach Level 8',
+    effectLabel: 'Character profile accent',
+    flavor: 'A profile detail with earned weight.',
+    effect: { type: 'cosmetic' },
+  },
+  {
+    id: 'double-xp-token',
+    name: 'Double XP Token',
+    category: 'utility',
+    stat: 'INT',
+    icon: 'flash-outline',
+    unlockRule: { level: 6, mode: 'level_only' },
+    unlockLabel: 'Reach Level 6',
+    effectLabel: 'Double XP on the next completed quest',
+    flavor: 'Spend it where momentum matters.',
+    effect: { type: 'next_quest_double_xp_once' },
+  },
+  {
+    id: 'quest-voucher',
+    name: 'Quest Voucher',
+    category: 'utility',
+    stat: 'CHA',
+    icon: 'ticket-outline',
+    unlockRule: { level: 8, mode: 'level_only' },
+    unlockLabel: 'Reach Level 8',
+    effectLabel: 'Instantly complete 1 quest without breaking flow',
+    flavor: 'A spare move for a tight day.',
+    effect: { type: 'quest_voucher' },
+  },
+  {
+    id: 'mythic-frame-aura',
+    name: 'Mythic Frame Aura',
+    category: 'cosmetic',
+    stat: 'CHA',
+    icon: 'aperture-outline',
+    unlockRule: { level: 12, mode: 'level_only' },
+    unlockLabel: 'Reach Level 12',
+    effectLabel: 'Premium profile frame glow',
+    flavor: 'A final layer of earned polish.',
+    effect: { type: 'cosmetic' },
+  },
 ];
 
 export function getItemDefinitionById(itemId: string): ItemDefinition | null {
   return ITEM_DEFINITIONS.find((item) => item.id === itemId) ?? null;
+}
+
+const ITEM_RARITY_BY_ID: Record<string, ItemRarity> = {
+  'gym-gloves': 'Common',
+  'running-shoes': 'Rare',
+  'protein-shaker': 'Epic',
+  laptop: 'Common',
+  'blue-light-glasses': 'Rare',
+  'mechanical-keyboard': 'Epic',
+  bookmark: 'Common',
+  'reading-lamp': 'Rare',
+  journal: 'Epic',
+  'name-tag': 'Common',
+  cologne: 'Rare',
+  microphone: 'Legendary',
+  'water-bottle': 'Common',
+  'sleep-mask': 'Rare',
+  'yoga-mat': 'Epic',
+  'adventurer-badge': 'Common',
+  'rising-hero-badge': 'Epic',
+  'xp-scroll': 'Rare',
+  'streak-shield': 'Epic',
+  'custom-frame-aura': 'Legendary',
+  'resistance-bands': 'Common',
+  'wrist-wraps': 'Rare',
+  'lifting-belt': 'Epic',
+  'training-tank': 'Rare',
+  'battle-rope': 'Legendary',
+  'study-planner': 'Common',
+  'desk-lamp': 'Rare',
+  'focus-timer': 'Epic',
+  'tablet-stand': 'Rare',
+  'neural-headset': 'Legendary',
+  'book-sleeve': 'Common',
+  'tea-mug': 'Rare',
+  'fountain-pen': 'Epic',
+  'study-candle': 'Rare',
+  'sage-cloak': 'Legendary',
+  'calling-card': 'Common',
+  'smart-watch': 'Rare',
+  'ring-light': 'Epic',
+  blazer: 'Rare',
+  'crown-pin': 'Legendary',
+  'vitamin-pack': 'Common',
+  'running-cap': 'Rare',
+  'foam-roller': 'Epic',
+  'fitness-tracker': 'Rare',
+  'guardian-emblem': 'Legendary',
+  'explorer-badge': 'Common',
+  'hero-cape': 'Epic',
+  'double-xp-token': 'Rare',
+  'quest-voucher': 'Epic',
+  'mythic-frame-aura': 'Legendary',
+};
+
+export function getItemRarityById(itemId: string): ItemRarity {
+  return ITEM_RARITY_BY_ID[itemId] ?? 'Common';
 }
 
 export type AchievementId =
@@ -399,6 +827,75 @@ export interface AchievementDefinition {
 
 export interface AchievementStatus extends AchievementDefinition {
   unlockedAt: string | null;
+}
+
+export type AchievementCategory =
+  | 'Progression'
+  | 'Streaks'
+  | 'Stats'
+  | 'Inventory'
+  | 'Exploration';
+
+export const ACHIEVEMENT_CATEGORIES: AchievementCategory[] = [
+  'Progression',
+  'Streaks',
+  'Stats',
+  'Inventory',
+  'Exploration',
+];
+
+const STREAK_ACHIEVEMENT_IDS = new Set<AchievementId>([
+  'streak-3-days',
+  'weekly-warrior',
+  'iron-will',
+  'relentless',
+  'habit-hero',
+  'full-combo',
+  'locked-in',
+  'daily-dominator',
+  'comeback-kid',
+  'recovery-arc',
+  'no-zero-days',
+  'peak-week',
+  'discipline-over-mood',
+]);
+
+const STATS_ACHIEVEMENT_IDS = new Set<AchievementId>([
+  'strength-starter',
+  'brain-boost',
+  'page-turner',
+  'people-person',
+  'wellness-mode',
+  'strength-specialist',
+  'intelligence-specialist',
+  'wisdom-specialist',
+  'charisma-specialist',
+  'vitality-specialist',
+  'balanced-adventurer',
+  'hybrid-build',
+  'maxed-focus',
+  'double-class',
+  'all-rounder',
+]);
+
+const INVENTORY_ACHIEVEMENT_IDS = new Set<AchievementId>([
+  'loot-seeker',
+  'fully-equipped',
+  'collector',
+]);
+
+const EXPLORATION_ACHIEVEMENT_IDS = new Set<AchievementId>([
+  'weekend-warrior',
+  'early-momentum',
+  'night-owl',
+]);
+
+export function getAchievementCategory(id: AchievementId): AchievementCategory {
+  if (STREAK_ACHIEVEMENT_IDS.has(id)) return 'Streaks';
+  if (STATS_ACHIEVEMENT_IDS.has(id)) return 'Stats';
+  if (INVENTORY_ACHIEVEMENT_IDS.has(id)) return 'Inventory';
+  if (EXPLORATION_ACHIEVEMENT_IDS.has(id)) return 'Exploration';
+  return 'Progression';
 }
 
 export const ACHIEVEMENTS: AchievementDefinition[] = [
@@ -757,6 +1254,25 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
 // ─── Custom Quests ──────────────────────────────────────
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
+export type MapActivityType = 'walk' | 'run';
+export type CustomQuestSource = 'manual' | 'map_activity';
+
+export interface MapCoordinate {
+  latitude: number;
+  longitude: number;
+}
+
+export interface MapActivitySession {
+  id: string;
+  activityType: MapActivityType;
+  difficulty: Difficulty;
+  distanceMeters: number;
+  elapsedMs: number;
+  startedAt: string;
+  endedAt: string;
+  xpMultiplier: number;
+  routeCoordinates: MapCoordinate[];
+}
 
 export interface CustomQuest {
   id: string;
@@ -766,6 +1282,10 @@ export interface CustomQuest {
   xpReward: number;
   completedAt: string | null;
   createdAt: string;
+  source: CustomQuestSource;
+  activityType?: MapActivityType | null;
+  linkedMapSessionId?: string | null;
+  distanceMeters: number;
 }
 
 export const DIFFICULTY_XP: Record<Difficulty, number> = {

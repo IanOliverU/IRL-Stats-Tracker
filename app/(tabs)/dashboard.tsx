@@ -2,6 +2,7 @@ import { AchievementUnlockPopup } from '@/components/AchievementUnlockPopup';
 import { AchievementsModal } from '@/components/AchievementsModal';
 import { CustomQuestCard } from '@/components/CustomQuestCard';
 import { ItemUnlockPopup } from '@/components/ItemUnlockPopup';
+import { LevelUpModal } from '@/components/LevelUpModal';
 import { ProgressBar } from '@/components/ProgressBar';
 import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
 import { QuestCard } from '@/components/QuestCard';
@@ -18,7 +19,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -36,6 +37,7 @@ const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
 
 export default function DashboardScreen() {
   useGameHydration();
+  const router = useRouter();
   const user = useGameStore((s) => s.user);
   const items = useGameStore((s) => s.items);
   const habits = useGameStore((s) => s.habits);
@@ -47,6 +49,7 @@ export default function DashboardScreen() {
   const completeCustomQuestAction = useGameStore((s) => s.completeCustomQuest);
   const dismissAchievementUnlock = useGameStore((s) => s.dismissAchievementUnlock);
   const dismissItemUnlock = useGameStore((s) => s.dismissItemUnlock);
+  const dismissItemUnlocks = useGameStore((s) => s.dismissItemUnlocks);
   const resetData = useGameStore((s) => s.resetData);
   const setUserName = useGameStore((s) => s.setUserName);
   const getStreak = useGameStore((s) => s.getStreak);
@@ -84,6 +87,7 @@ export default function DashboardScreen() {
   const [questStartName, setQuestStartName] = useState('');
   const [completionFeedback, setCompletionFeedback] = useState<QuestCompletionFeedbackData | null>(null);
   const [showCompletionFeedback, setShowCompletionFeedback] = useState(false);
+  const [levelUpFeedback, setLevelUpFeedback] = useState<QuestCompletionFeedbackData | null>(null);
 
   // Re-read user from DB every time this tab comes into focus
   // so level / stats always reflect the latest data.
@@ -136,11 +140,18 @@ export default function DashboardScreen() {
   const xpProgress = required > 0 ? xpIntoLevel / required : 1;
   const habitCompletedCount = habits.filter((h) => isCompletedToday(h.id)).length;
   const customCompletedToday = getCustomQuestsCompletedToday();
+  const activeMapSessionQuests = customQuests.filter((quest) => quest.source === 'map_activity' && !quest.completedAt);
 
   const handleCompleteCustom = (questId: string) => {
     const result = completeCustomQuestAction(questId);
     if (!result.success) {
       Alert.alert('Limit Reached', result.message);
+      return;
+    }
+    if (result.feedback.newLevel > result.feedback.previousLevel) {
+      setLevelUpFeedback(result.feedback);
+      setShowCompletionFeedback(false);
+      setCompletionFeedback(null);
       return;
     }
     setCompletionFeedback(result.feedback);
@@ -150,17 +161,39 @@ export default function DashboardScreen() {
   const handleCompleteHabit = (habitId: string) => {
     const feedback = completeHabit(habitId);
     if (!feedback) return;
+    if (feedback.newLevel > feedback.previousLevel) {
+      setLevelUpFeedback(feedback);
+      setShowCompletionFeedback(false);
+      setCompletionFeedback(null);
+      return;
+    }
     setCompletionFeedback(feedback);
     setShowCompletionFeedback(true);
+  };
+
+  const handleCloseLevelUpModal = () => {
+    dismissItemUnlocks(levelUpFeedback?.unlockedItemIds ?? []);
+    setLevelUpFeedback(null);
+  };
+
+  const handleViewReward = () => {
+    dismissItemUnlocks(levelUpFeedback?.unlockedItemIds ?? []);
+    setLevelUpFeedback(null);
+    router.push('/(tabs)/inventory');
   };
 
   const displayName = user.name || 'Stats Tracker';
   const activeAchievementUnlock = achievementUnlockQueue[0] ?? null;
   const activeItemUnlock = itemUnlockQueue[0] ?? null;
   const shouldShowQuestFeedback = showCompletionFeedback;
-  const shouldShowAchievement = isFocused && !shouldShowQuestFeedback && !!activeAchievementUnlock;
+  const shouldShowLevelUp = isFocused && !!levelUpFeedback;
+  const shouldShowAchievement = isFocused && !shouldShowQuestFeedback && !shouldShowLevelUp && !!activeAchievementUnlock;
   const shouldShowItem =
-    isFocused && !shouldShowQuestFeedback && !activeAchievementUnlock && !!activeItemUnlock;
+    isFocused &&
+    !shouldShowQuestFeedback &&
+    !shouldShowLevelUp &&
+    !activeAchievementUnlock &&
+    !!activeItemUnlock;
 
   return (
     <>
@@ -286,6 +319,24 @@ export default function DashboardScreen() {
               />
             ))
           )}
+          {activeMapSessionQuests.length > 0 && (
+            <View className="mt-3">
+              <View className="flex-row items-center mb-2">
+                <Ionicons name="walk-outline" size={16} color={colors.textSecondary} />
+                <Text className="text-sm font-semibold ml-2" style={{ color: colors.textSecondary }}>
+                  Active Sessions
+                </Text>
+              </View>
+              {activeMapSessionQuests.map((quest) => (
+                <CustomQuestCard
+                  key={`session_${quest.id}`}
+                  quest={quest}
+                  onComplete={() => {}}
+                  onDelete={() => {}}
+                />
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -296,6 +347,13 @@ export default function DashboardScreen() {
           setShowCompletionFeedback(false);
           setCompletionFeedback(null);
         }}
+      />
+
+      <LevelUpModal
+        visible={shouldShowLevelUp}
+        feedback={levelUpFeedback}
+        onContinue={handleCloseLevelUpModal}
+        onViewReward={handleViewReward}
       />
 
       <AchievementUnlockPopup

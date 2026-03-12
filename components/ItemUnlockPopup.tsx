@@ -1,4 +1,4 @@
-import { getItemDefinitionById } from '@/models';
+import { getItemDefinitionById, getItemRarityById, type ItemRarity } from '@/models';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
@@ -14,6 +14,7 @@ export function ItemUnlockPopup({ itemId, onHide }: ItemUnlockPopupProps) {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const item = itemId ? getItemDefinitionById(itemId) : null;
+  const rarity = itemId ? getItemRarityById(itemId) : null;
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-12)).current;
 
@@ -39,6 +40,8 @@ export function ItemUnlockPopup({ itemId, onHide }: ItemUnlockPopupProps) {
   }, [item, onHide, opacity, translateY]);
 
   if (!item) return null;
+
+  const rarityColor = getRarityColor(rarity, colors);
 
   return (
     <View
@@ -66,13 +69,34 @@ export function ItemUnlockPopup({ itemId, onHide }: ItemUnlockPopupProps) {
             Reward Unlocked
           </Text>
         </View>
-        <Text className="text-base font-semibold" style={{ color: colors.text }}>
-          {item.name}
-        </Text>
+        <View className="flex-row items-center justify-between">
+          <Text className="text-base font-semibold" style={{ color: colors.text }}>
+            {item.name}
+          </Text>
+          <View className="px-2 py-1 rounded-lg" style={{ backgroundColor: rarityColor + '18' }}>
+            <Text className="text-[10px] font-semibold" style={{ color: rarityColor }}>
+              {rarity}
+            </Text>
+          </View>
+        </View>
         <Text className="text-xs mt-0.5" style={{ color: colors.textSecondary }}>
           {item.effectLabel}
         </Text>
       </Animated.View>
     </View>
   );
+}
+
+function getRarityColor(rarity: ItemRarity | null, colors: ReturnType<typeof useAppColors>): string {
+  switch (rarity) {
+    case 'Rare':
+      return colors.accent;
+    case 'Epic':
+      return colors.warning;
+    case 'Legendary':
+      return '#f97316';
+    case 'Common':
+    default:
+      return colors.textSecondary;
+  }
 }

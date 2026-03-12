@@ -31,7 +31,7 @@ export function ProgressBar({
       duration: 400,
       easing: Easing.out(Easing.quad),
     });
-  }, [ratio]);
+  }, [animatedProgress, ratio]);
 
   const fillStyle = useAnimatedStyle(() => ({
     width: `${animatedProgress.value * 100}%` as any,

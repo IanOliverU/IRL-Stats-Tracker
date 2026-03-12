@@ -6,6 +6,8 @@ import {
   type HabitLog,
   type Item,
   type ItemDefinition,
+  type MapActivitySession,
+  type MapCoordinate,
   type StatType,
   type User,
 } from '@/models';
@@ -87,7 +89,11 @@ function initSchema(database: SQLite.SQLiteDatabase) {
       difficulty TEXT NOT NULL,
       xpReward INTEGER NOT NULL,
       completedAt TEXT,
-      createdAt TEXT NOT NULL
+      createdAt TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'manual',
+      activityType TEXT,
+      linkedMapSessionId TEXT,
+      distanceMeters REAL NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS settings (
@@ -99,6 +105,21 @@ function initSchema(database: SQLite.SQLiteDatabase) {
       achievementId TEXT PRIMARY KEY,
       unlockedAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS map_activity_session (
+      id TEXT PRIMARY KEY,
+      activityType TEXT NOT NULL,
+      difficulty TEXT NOT NULL,
+      distanceMeters REAL NOT NULL,
+      elapsedMs INTEGER NOT NULL,
+      startedAt TEXT NOT NULL,
+      endedAt TEXT NOT NULL,
+      xpMultiplier REAL NOT NULL,
+      routeCoordinatesJson TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_map_activity_session_ended_at
+      ON map_activity_session(endedAt DESC);
   `);
 
   // Migration: add name column if not present
@@ -106,6 +127,30 @@ function initSchema(database: SQLite.SQLiteDatabase) {
     database.runSync('ALTER TABLE user ADD COLUMN name TEXT');
   } catch {
     // Column already exists — ignore
+  }
+
+  try {
+    database.runSync("ALTER TABLE custom_quest ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'");
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    database.runSync('ALTER TABLE custom_quest ADD COLUMN activityType TEXT');
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    database.runSync('ALTER TABLE custom_quest ADD COLUMN linkedMapSessionId TEXT');
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    database.runSync('ALTER TABLE custom_quest ADD COLUMN distanceMeters REAL NOT NULL DEFAULT 0');
+  } catch {
+    // Column already exists
   }
 
   // Seed default user if none exists
@@ -541,6 +586,7 @@ export function dbResetAllData(): void {
     DELETE FROM user;
     DELETE FROM custom_quest;
     DELETE FROM achievement_unlock;
+    DELETE FROM map_activity_session;
     DELETE FROM settings WHERE key LIKE 'weekly_bonus_processed_%' OR key = 'quest_longest_streak';
   `);
 
@@ -577,8 +623,34 @@ export function dbResetAllData(): void {
 export function dbCreateCustomQuest(quest: Omit<CustomQuest, 'completedAt'>): void {
   const database = getDb();
   database.runSync(
-    'INSERT INTO custom_quest (id, title, statReward, difficulty, xpReward, completedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [quest.id, quest.title, quest.statReward, quest.difficulty, quest.xpReward, null, quest.createdAt]
+    `
+      INSERT INTO custom_quest (
+        id,
+        title,
+        statReward,
+        difficulty,
+        xpReward,
+        completedAt,
+        createdAt,
+        source,
+        activityType,
+        linkedMapSessionId,
+        distanceMeters
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      quest.id,
+      quest.title,
+      quest.statReward,
+      quest.difficulty,
+      quest.xpReward,
+      null,
+      quest.createdAt,
+      quest.source,
+      quest.activityType ?? null,
+      quest.linkedMapSessionId ?? null,
+      quest.distanceMeters,
+    ]
   );
 }
 
@@ -602,6 +674,42 @@ export function dbCompleteCustomQuest(questId: string): void {
   database.runSync('UPDATE custom_quest SET completedAt = ? WHERE id = ?', [now, questId]);
 }
 
+export function dbGetCustomQuestById(questId: string): CustomQuest | null {
+  const database = getDb();
+  const row = database.getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM custom_quest WHERE id = ? LIMIT 1',
+    [questId]
+  );
+
+  return row ? (row as unknown as CustomQuest) : null;
+}
+
+export function dbUpdateCustomQuest(
+  questId: string,
+  updates: Partial<Pick<CustomQuest, 'title' | 'difficulty' | 'xpReward' | 'activityType' | 'linkedMapSessionId' | 'distanceMeters'>>
+): void {
+  const database = getDb();
+  const quest = dbGetCustomQuestById(questId);
+  if (!quest) return;
+
+  database.runSync(
+    `
+      UPDATE custom_quest
+      SET title = ?, difficulty = ?, xpReward = ?, activityType = ?, linkedMapSessionId = ?, distanceMeters = ?
+      WHERE id = ?
+    `,
+    [
+      updates.title ?? quest.title,
+      updates.difficulty ?? quest.difficulty,
+      updates.xpReward ?? quest.xpReward,
+      updates.activityType ?? quest.activityType ?? null,
+      updates.linkedMapSessionId ?? quest.linkedMapSessionId ?? null,
+      updates.distanceMeters ?? quest.distanceMeters,
+      questId,
+    ]
+  );
+}
+
 /** Delete a custom quest */
 export function dbDeleteCustomQuest(questId: string): void {
   const database = getDb();
@@ -623,6 +731,11 @@ export function dbCountCompletedCustomQuestsToday(): number {
 
 /** Whether at least one quest for a given stat has been completed today. */
 export function dbHasCompletedQuestForStatToday(stat: StatType): boolean {
+  return dbGetCompletedQuestCountForStatToday(stat) > 0;
+}
+
+/** Completed quest count for a stat across habits + custom quests for today. */
+export function dbGetCompletedQuestCountForStatToday(stat: StatType): number {
   const database = getDb();
   const today = new Date().toISOString().slice(0, 10);
   const start = `${today}T00:00:00.000Z`;
@@ -640,7 +753,7 @@ export function dbHasCompletedQuestForStatToday(stat: StatType): boolean {
     `,
     [stat, start, end, stat, start, end]
   );
-  return (row?.count ?? 0) > 0;
+  return row?.count ?? 0;
 }
 
 /** Total XP earned from custom quests for a given stat today */
@@ -663,4 +776,88 @@ export function dbGetTotalMissionXp(): number {
     'SELECT COALESCE(SUM(xpReward), 0) as total FROM custom_quest WHERE completedAt IS NOT NULL'
   );
   return row?.total ?? 0;
+}
+
+type MapActivitySessionRow = Omit<MapActivitySession, 'routeCoordinates'> & {
+  routeCoordinatesJson: string;
+};
+
+function deserializeMapActivitySession(row: MapActivitySessionRow): MapActivitySession {
+  let routeCoordinates: MapCoordinate[] = [];
+
+  try {
+    const parsed = JSON.parse(row.routeCoordinatesJson) as unknown;
+    if (Array.isArray(parsed)) {
+      routeCoordinates = parsed.filter(
+        (coordinate): coordinate is MapCoordinate =>
+          typeof coordinate === 'object' &&
+          coordinate !== null &&
+          typeof (coordinate as MapCoordinate).latitude === 'number' &&
+          typeof (coordinate as MapCoordinate).longitude === 'number'
+      );
+    }
+  } catch {
+    routeCoordinates = [];
+  }
+
+  return {
+    id: row.id,
+    activityType: row.activityType,
+    difficulty: row.difficulty,
+    distanceMeters: row.distanceMeters,
+    elapsedMs: row.elapsedMs,
+    startedAt: row.startedAt,
+    endedAt: row.endedAt,
+    xpMultiplier: row.xpMultiplier,
+    routeCoordinates,
+  };
+}
+
+export function dbCreateMapActivitySession(session: MapActivitySession): void {
+  const database = getDb();
+  database.runSync(
+    `
+      INSERT INTO map_activity_session (
+        id,
+        activityType,
+        difficulty,
+        distanceMeters,
+        elapsedMs,
+        startedAt,
+        endedAt,
+        xpMultiplier,
+        routeCoordinatesJson
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      session.id,
+      session.activityType,
+      session.difficulty,
+      session.distanceMeters,
+      session.elapsedMs,
+      session.startedAt,
+      session.endedAt,
+      session.xpMultiplier,
+      JSON.stringify(session.routeCoordinates),
+    ]
+  );
+}
+
+export function dbGetMapActivitySessions(): MapActivitySession[] {
+  const database = getDb();
+  const rows = database.getAllSync<MapActivitySessionRow>(
+    'SELECT * FROM map_activity_session ORDER BY endedAt DESC'
+  );
+
+  return (rows ?? []).map(deserializeMapActivitySession);
+}
+
+export function dbGetMapActivitySessionById(sessionId: string): MapActivitySession | null {
+  const database = getDb();
+  const row = database.getFirstSync<MapActivitySessionRow>(
+    'SELECT * FROM map_activity_session WHERE id = ? LIMIT 1',
+    [sessionId]
+  );
+
+  return row ? deserializeMapActivitySession(row) : null;
 }

@@ -1,13 +1,39 @@
+import {
+  formatMapDuration,
+  formatMapPace,
+  getMapActivityLabel,
+  getMapSessionDifficulty,
+  getMapSessionTitle,
+  MAP_SESSION_XP_BONUS_LABELS,
+  MAP_SESSION_XP_MULTIPLIERS,
+  roundElapsedMs,
+} from '@/lib/mapActivity';
+import {
+  DIFFICULTY_COLORS,
+  DIFFICULTY_LABELS,
+  DIFFICULTY_XP,
+  MAX_CUSTOM_QUESTS_PER_DAY,
+  type Difficulty,
+  type MapActivityType,
+} from '@/models';
+import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { LatLng, Marker, Polyline, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type TrackingStatus = 'running' | 'paused' | 'stopped';
-type ActivityMode = 'run' | 'walk';
+type CompletedSessionSummary = {
+  activityMode: MapActivityType;
+  difficulty: Difficulty;
+  distanceMeters: number;
+  elapsedMs: number;
+  xpMultiplier: number;
+};
 
 const DEFAULT_REGION: Region = {
   latitude: 37.78825,
@@ -18,6 +44,7 @@ const DEFAULT_REGION: Region = {
 
 const EARTH_RADIUS_METERS = 6371000;
 const MIN_DISTANCE_DELTA_METERS = 2;
+const SUMMARY_MODAL_DURATION_MS = 10000;
 
 function toRadians(value: number): number {
   return (value * Math.PI) / 180;
@@ -38,47 +65,27 @@ function haversineDistanceMeters(from: LatLng, to: LatLng): number {
   return EARTH_RADIUS_METERS * c;
 }
 
-function formatDuration(totalMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(totalMs / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  }
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
-
-function formatPace(elapsedMs: number, distanceUnits: number): string {
-  if (distanceUnits <= 0) return '--';
-
-  const paceMinutes = elapsedMs / 60000 / distanceUnits;
-  const minutes = Math.floor(paceMinutes);
-  const seconds = Math.round((paceMinutes - minutes) * 60);
-
-  if (seconds === 60) {
-    return `${minutes + 1}:00`;
-  }
-
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
-
-function getActivityLabel(mode: ActivityMode): string {
-  return mode === 'run' ? 'Run' : 'Walk';
-}
-
 export default function MapsScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const addMapActivitySession = useGameStore((state) => state.addMapActivitySession);
+  const addCustomQuest = useGameStore((state) => state.addCustomQuest);
+  const updateCustomQuest = useGameStore((state) => state.updateCustomQuest);
+  const completeCustomQuestAction = useGameStore((state) => state.completeCustomQuest);
+  const deleteCustomQuest = useGameStore((state) => state.deleteCustomQuest);
+  const getCustomQuestsCompletedToday = useGameStore((state) => state.getCustomQuestsCompletedToday);
 
   const mapRef = useRef<MapView | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const runStartedAtRef = useRef<number | null>(null);
+  const sessionStartedAtRef = useRef<string | null>(null);
   const lastTrackedCoordinateRef = useRef<LatLng | null>(null);
+  const activeCustomQuestIdRef = useRef<string | null>(null);
+  const lastQuestDistanceSyncMetersRef = useRef(0);
 
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>('stopped');
-  const [activityMode, setActivityMode] = useState<ActivityMode>('run');
+  const [activityMode, setActivityMode] = useState<MapActivityType>('run');
   const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus>(
     Location.PermissionStatus.UNDETERMINED
   );
@@ -89,6 +96,15 @@ export default function MapsScreen() {
   const [distanceMeters, setDistanceMeters] = useState(0);
   const [elapsedBeforeRunMs, setElapsedBeforeRunMs] = useState(0);
   const [clockNow, setClockNow] = useState(Date.now());
+  const [completedSession, setCompletedSession] = useState<CompletedSessionSummary | null>(null);
+  const [summaryCountdownMs, setSummaryCountdownMs] = useState(SUMMARY_MODAL_DURATION_MS);
+  const summaryCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const summaryClosingRef = useRef(false);
+  const summaryOverlayOpacity = useRef(new Animated.Value(0)).current;
+  const summaryCardOpacity = useRef(new Animated.Value(0)).current;
+  const summaryCardTranslateY = useRef(new Animated.Value(18)).current;
+  const summaryCardScale = useRef(new Animated.Value(0.96)).current;
+  const summaryProgress = useRef(new Animated.Value(1)).current;
 
   const buildRegion = useCallback((coordinate: LatLng): Region => {
     return {
@@ -179,12 +195,165 @@ export default function MapsScreen() {
     return () => clearInterval(interval);
   }, [trackingStatus]);
 
+  const clearSummaryCountdownInterval = useCallback(() => {
+    if (summaryCountdownIntervalRef.current) {
+      clearInterval(summaryCountdownIntervalRef.current);
+      summaryCountdownIntervalRef.current = null;
+    }
+  }, []);
+
+  const closeSummaryModal = useCallback(() => {
+    if (!completedSession || summaryClosingRef.current) return;
+
+    summaryClosingRef.current = true;
+    clearSummaryCountdownInterval();
+    summaryProgress.stopAnimation();
+
+    Animated.parallel([
+      Animated.timing(summaryOverlayOpacity, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(summaryCardOpacity, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(summaryCardTranslateY, {
+        toValue: 18,
+        duration: 180,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(summaryCardScale, {
+        toValue: 0.97,
+        duration: 180,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      summaryClosingRef.current = false;
+      setCompletedSession(null);
+      setSummaryCountdownMs(SUMMARY_MODAL_DURATION_MS);
+      summaryProgress.setValue(1);
+    });
+  }, [
+    clearSummaryCountdownInterval,
+    completedSession,
+    summaryCardOpacity,
+    summaryCardScale,
+    summaryCardTranslateY,
+    summaryOverlayOpacity,
+    summaryProgress,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      clearSummaryCountdownInterval();
+      summaryProgress.stopAnimation();
+    };
+  }, [clearSummaryCountdownInterval, summaryProgress]);
+
+  useEffect(() => {
+    if (!completedSession) {
+      clearSummaryCountdownInterval();
+      return;
+    }
+
+    summaryClosingRef.current = false;
+    setSummaryCountdownMs(SUMMARY_MODAL_DURATION_MS);
+    summaryOverlayOpacity.setValue(0);
+    summaryCardOpacity.setValue(0);
+    summaryCardTranslateY.setValue(18);
+    summaryCardScale.setValue(0.96);
+    summaryProgress.setValue(1);
+
+    const openedAt = Date.now();
+    clearSummaryCountdownInterval();
+    summaryCountdownIntervalRef.current = setInterval(() => {
+      const nextRemainingMs = Math.max(0, SUMMARY_MODAL_DURATION_MS - (Date.now() - openedAt));
+      setSummaryCountdownMs(nextRemainingMs);
+
+      if (nextRemainingMs <= 0) {
+        closeSummaryModal();
+      }
+    }, 100);
+
+    Animated.parallel([
+      Animated.timing(summaryOverlayOpacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(summaryCardOpacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(summaryCardTranslateY, {
+        toValue: 0,
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(summaryCardScale, {
+        toValue: 1,
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(summaryProgress, {
+        toValue: 0,
+        duration: SUMMARY_MODAL_DURATION_MS,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }),
+    ]).start(({ finished }) => {
+      if (finished && !summaryClosingRef.current) {
+        closeSummaryModal();
+      }
+    });
+
+    return () => {
+      clearSummaryCountdownInterval();
+      summaryProgress.stopAnimation();
+    };
+  }, [
+    clearSummaryCountdownInterval,
+    closeSummaryModal,
+    completedSession,
+    summaryCardOpacity,
+    summaryCardScale,
+    summaryCardTranslateY,
+    summaryOverlayOpacity,
+    summaryProgress,
+  ]);
+
   const activeElapsedMs = useMemo(() => {
     if (trackingStatus === 'running' && runStartedAtRef.current) {
       return elapsedBeforeRunMs + (clockNow - runStartedAtRef.current);
     }
     return elapsedBeforeRunMs;
   }, [clockNow, elapsedBeforeRunMs, trackingStatus]);
+
+  useEffect(() => {
+    const activeQuestId = activeCustomQuestIdRef.current;
+    if (!activeQuestId || trackingStatus === 'stopped') return;
+
+    const shouldSyncDistance =
+      distanceMeters === 0 ||
+      Math.abs(distanceMeters - lastQuestDistanceSyncMetersRef.current) >= 100;
+
+    if (!shouldSyncDistance) return;
+
+    lastQuestDistanceSyncMetersRef.current = distanceMeters;
+    updateCustomQuest(activeQuestId, { distanceMeters });
+  }, [distanceMeters, trackingStatus, updateCustomQuest]);
 
   const ensureForegroundPermission = useCallback(async () => {
     const current = await Location.getForegroundPermissionsAsync();
@@ -248,6 +417,10 @@ export default function MapsScreen() {
       setRouteCoordinates([]);
       setDistanceMeters(0);
       setElapsedBeforeRunMs(0);
+      setCompletedSession(null);
+      sessionStartedAtRef.current = null;
+      activeCustomQuestIdRef.current = null;
+      lastQuestDistanceSyncMetersRef.current = 0;
       lastTrackedCoordinateRef.current = null;
     }
 
@@ -278,15 +451,46 @@ export default function MapsScreen() {
     try {
       await beginWatchingPosition();
       const startedAt = Date.now();
+      if (!sessionStartedAtRef.current) {
+        sessionStartedAtRef.current = new Date(startedAt).toISOString();
+      }
       runStartedAtRef.current = startedAt;
       setClockNow(startedAt);
       setTrackingStatus('running');
+      if (trackingStatus === 'stopped') {
+        if (getCustomQuestsCompletedToday() < MAX_CUSTOM_QUESTS_PER_DAY) {
+          const quest = addCustomQuest({
+            title: `${getMapActivityLabel(activityMode)} Session`,
+            statReward: 'VIT',
+            difficulty: 'easy',
+            source: 'map_activity',
+            activityType: activityMode,
+            distanceMeters: 0,
+          });
+
+          activeCustomQuestIdRef.current = quest?.id ?? null;
+          lastQuestDistanceSyncMetersRef.current = 0;
+        } else {
+          setPermissionMessage(
+            `Daily custom quest limit reached (${MAX_CUSTOM_QUESTS_PER_DAY}). This session will still be saved to history.`
+          );
+        }
+      }
     } catch {
       stopLocationWatcher();
       runStartedAtRef.current = null;
       setPermissionMessage('Unable to start live tracking. Please try again.');
     }
-  }, [beginWatchingPosition, centerMapOnCoordinate, ensureForegroundPermission, stopLocationWatcher, trackingStatus]);
+  }, [
+    activityMode,
+    addCustomQuest,
+    beginWatchingPosition,
+    centerMapOnCoordinate,
+    ensureForegroundPermission,
+    getCustomQuestsCompletedToday,
+    stopLocationWatcher,
+    trackingStatus,
+  ]);
 
   const pauseTracking = useCallback(() => {
     if (trackingStatus !== 'running') return;
@@ -294,8 +498,7 @@ export default function MapsScreen() {
     const startedAt = runStartedAtRef.current;
     if (startedAt) {
       setElapsedBeforeRunMs((previous) => {
-        const next = previous + (Date.now() - startedAt);
-        return Math.floor(next / 1000) * 1000;
+        return roundElapsedMs(previous + (Date.now() - startedAt));
       });
       runStartedAtRef.current = null;
     }
@@ -305,27 +508,105 @@ export default function MapsScreen() {
   }, [stopLocationWatcher, trackingStatus]);
 
   const stopTracking = useCallback(() => {
+    let finalElapsedMs = elapsedBeforeRunMs;
     const startedAt = runStartedAtRef.current;
+    const activeCustomQuestId = activeCustomQuestIdRef.current;
     if (trackingStatus === 'running' && startedAt) {
-      setElapsedBeforeRunMs((previous) => {
-        const next = previous + (Date.now() - startedAt);
-        return Math.floor(next / 1000) * 1000;
-      });
+      finalElapsedMs = roundElapsedMs(elapsedBeforeRunMs + (Date.now() - startedAt));
+      setElapsedBeforeRunMs(finalElapsedMs);
       runStartedAtRef.current = null;
     }
 
+    if (routeCoordinates.length > 1 && (distanceMeters > 0 || finalElapsedMs > 0)) {
+      const difficulty = getMapSessionDifficulty(distanceMeters / 1000);
+      const endedAt = new Date().toISOString();
+      const startedAtIso = sessionStartedAtRef.current ?? new Date(Date.now() - finalElapsedMs).toISOString();
+      const session = addMapActivitySession({
+        activityType: activityMode,
+        difficulty,
+        distanceMeters,
+        elapsedMs: finalElapsedMs,
+        startedAt: startedAtIso,
+        endedAt,
+        xpMultiplier: MAP_SESSION_XP_MULTIPLIERS[difficulty],
+        routeCoordinates,
+      });
+
+      setCompletedSession({
+        activityMode: session.activityType,
+        difficulty: session.difficulty,
+        distanceMeters: session.distanceMeters,
+        elapsedMs: session.elapsedMs,
+        xpMultiplier: session.xpMultiplier,
+      });
+
+      if (activeCustomQuestId) {
+        const finalQuestTitle = getMapSessionTitle({
+          activityType: session.activityType,
+          startedAt: session.startedAt,
+        });
+
+        updateCustomQuest(activeCustomQuestId, {
+          title: finalQuestTitle,
+          difficulty,
+          xpReward: DIFFICULTY_XP[difficulty],
+          activityType: session.activityType,
+          linkedMapSessionId: session.id,
+          distanceMeters: session.distanceMeters,
+        });
+
+        const autoCompleteResult = completeCustomQuestAction(activeCustomQuestId);
+        if (!autoCompleteResult.success) {
+          setPermissionMessage(`Session saved, but quest auto-complete failed: ${autoCompleteResult.message}`);
+        }
+      }
+    } else {
+      if (activeCustomQuestId) {
+        deleteCustomQuest(activeCustomQuestId);
+      }
+      setCompletedSession(null);
+    }
+
+    activeCustomQuestIdRef.current = null;
+    lastQuestDistanceSyncMetersRef.current = 0;
     stopLocationWatcher();
     setTrackingStatus('stopped');
-  }, [stopLocationWatcher, trackingStatus]);
+  }, [
+    activityMode,
+    addMapActivitySession,
+    completeCustomQuestAction,
+    deleteCustomQuest,
+    distanceMeters,
+    elapsedBeforeRunMs,
+    routeCoordinates,
+    stopLocationWatcher,
+    trackingStatus,
+    updateCustomQuest,
+  ]);
 
   const statusLabel = trackingStatus[0].toUpperCase() + trackingStatus.slice(1);
-  const activityLabel = getActivityLabel(activityMode);
+  const activityLabel = getMapActivityLabel(activityMode);
   const kilometers = distanceMeters / 1000;
   const miles = distanceMeters / 1609.344;
-  const pacePerKm = formatPace(activeElapsedMs, kilometers);
-  const pacePerMile = formatPace(activeElapsedMs, miles);
+  const pacePerKm = formatMapPace(activeElapsedMs, kilometers);
   const gpsReady = !!currentCoordinate;
   const panelTitle = gpsReady ? activityLabel : 'No GPS signal';
+  const summaryKilometers = completedSession ? completedSession.distanceMeters / 1000 : 0;
+  const summaryMiles = completedSession ? completedSession.distanceMeters / 1609.344 : 0;
+  const summaryPacePerKm = completedSession ? formatMapPace(completedSession.elapsedMs, summaryKilometers) : '--';
+  const summaryPacePerMile = completedSession ? formatMapPace(completedSession.elapsedMs, summaryMiles) : '--';
+  const summaryDifficultyLabel = completedSession ? `${DIFFICULTY_LABELS[completedSession.difficulty]} Session` : '';
+  const summaryRewardLabel = completedSession ? MAP_SESSION_XP_BONUS_LABELS[completedSession.difficulty] : '';
+  const summaryCountdownSeconds = Math.max(0, Math.ceil(summaryCountdownMs / 100) / 10);
+  const summaryProgressWidth = summaryProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  const goToActivityHistory = useCallback(() => {
+    closeSummaryModal();
+    router.push('/maps/history');
+  }, [closeSummaryModal, router]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -353,6 +634,22 @@ export default function MapsScreen() {
         </View>
       )}
 
+      <Pressable
+        onPress={() => router.push('/maps/history')}
+        style={({ pressed }) => [
+          styles.historyButton,
+          {
+            top: Math.max(insets.top + 10, 18),
+            backgroundColor: 'rgba(15, 23, 42, 0.92)',
+            borderColor: '#22c55e',
+            opacity: pressed ? 0.88 : 1,
+          },
+        ]}
+        accessibilityLabel="Open activity history"
+      >
+        <Ionicons name="time-outline" size={22} color="#ffffff" />
+      </Pressable>
+
       <View style={[styles.bottomDock, { paddingBottom: Math.max(16, insets.bottom) }]}>
         <View style={[styles.trackerCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <View style={styles.trackerHeaderRow}>
@@ -367,7 +664,7 @@ export default function MapsScreen() {
 
           <View style={styles.metricsRow}>
             <View style={styles.metricBlock}>
-              <Text style={[styles.metricValue, { color: colors.text }]}>{formatDuration(activeElapsedMs)}</Text>
+              <Text style={[styles.metricValue, { color: colors.text }]}>{formatMapDuration(activeElapsedMs)}</Text>
               <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Time</Text>
             </View>
             <View style={styles.metricBlock}>
@@ -402,7 +699,7 @@ export default function MapsScreen() {
                   ]}
                   accessibilityLabel="Toggle walk and run"
                 >
-                  <Ionicons name={activityMode === 'run' ? 'flash' : 'walk'} size={32} color={colors.accent} />
+                  <Ionicons name={activityMode === 'run' ? 'flash' : 'walk'} size={34} color={colors.accent} />
                 </Pressable>
                 <Text style={[styles.idleActionLabel, { color: colors.text }]}>{activityLabel}</Text>
               </View>
@@ -413,7 +710,7 @@ export default function MapsScreen() {
                   style={({ pressed }) => [styles.startRoundButton, { opacity: pressed ? 0.85 : 1 }]}
                   accessibilityLabel={`Start ${activityLabel.toLowerCase()} tracking`}
                 >
-                  <Ionicons name="play" size={44} color="#ffffff" />
+                  <Ionicons name="play" size={36} color="#ffffff" />
                 </Pressable>
                 <Text style={[styles.idleActionLabel, { color: colors.text }]}>Start</Text>
               </View>
@@ -443,21 +740,100 @@ export default function MapsScreen() {
           )}
         </View>
 
-        {trackingStatus === 'stopped' && routeCoordinates.length > 1 ? (
-          <View style={[styles.summaryCard, { borderColor: colors.cardBorder, backgroundColor: colors.card }]}>
-            <Text style={[styles.summaryTitle, { color: colors.text }]}>Session Summary</Text>
-            <Text style={[styles.summaryText, { color: colors.text }]}>
-              Total Distance: {kilometers.toFixed(2)} km ({miles.toFixed(2)} mi)
-            </Text>
-            <Text style={[styles.summaryText, { color: colors.text }]}>
-              Total Time: {formatDuration(activeElapsedMs)}
-            </Text>
-            <Text style={[styles.summaryText, { color: colors.text }]}>
-              Avg Pace: {pacePerKm} /km | {pacePerMile} /mi
-            </Text>
-          </View>
-        ) : null}
       </View>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={!!completedSession}
+        onRequestClose={closeSummaryModal}
+      >
+        <Animated.View style={[styles.modalOverlay, { opacity: summaryOverlayOpacity }]}>
+          <Animated.View
+            style={[
+              styles.summaryModal,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+                opacity: summaryCardOpacity,
+                transform: [{ translateY: summaryCardTranslateY }, { scale: summaryCardScale }],
+              },
+            ]}
+          >
+            <View style={styles.summaryHeaderRow}>
+              <Text style={[styles.summaryTitle, { color: colors.text }]}>
+                {completedSession ? `${getMapActivityLabel(completedSession.activityMode)} Session Summary` : 'Session Summary'}
+              </Text>
+              {completedSession ? (
+                <View
+                  style={[
+                    styles.difficultyBadge,
+                    { backgroundColor: DIFFICULTY_COLORS[completedSession.difficulty] },
+                  ]}
+                >
+                  <Text style={styles.difficultyBadgeText}>{summaryDifficultyLabel}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View
+              style={[
+                styles.progressTrack,
+                { backgroundColor: colors.inputBg, borderColor: colors.cardBorder },
+              ]}
+            >
+              <Animated.View style={[styles.progressFill, { width: summaryProgressWidth }]} />
+            </View>
+
+            <Text style={[styles.summaryCountdownText, { color: colors.textSecondary }]}>
+              Auto-closes in {summaryCountdownSeconds.toFixed(1)}s
+            </Text>
+
+            {completedSession ? (
+              <>
+                <Text style={[styles.summaryText, { color: colors.text }]}>
+                  Total Distance: {summaryKilometers.toFixed(2)} km ({summaryMiles.toFixed(2)} mi)
+                </Text>
+                <Text style={[styles.summaryText, { color: colors.text }]}>
+                  Total Time: {formatMapDuration(completedSession.elapsedMs)}
+                </Text>
+                <Text style={[styles.summaryText, { color: colors.text }]}>
+                  Avg Pace: {summaryPacePerKm} /km | {summaryPacePerMile} /mi
+                </Text>
+                <Text style={[styles.summaryText, { color: colors.text }]}>
+                  Reward Scaling: {summaryRewardLabel} ({completedSession.xpMultiplier.toFixed(2)}x)
+                </Text>
+              </>
+            ) : null}
+
+            <View style={styles.summaryActionsRow}>
+              <Pressable
+                onPress={closeSummaryModal}
+                style={({ pressed }) => [
+                  styles.summarySecondaryButton,
+                  {
+                    borderColor: colors.cardBorder,
+                    backgroundColor: colors.inputBg,
+                    opacity: pressed ? 0.9 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.summarySecondaryButtonText, { color: colors.text }]}>Close</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={goToActivityHistory}
+                style={({ pressed }) => [
+                  styles.summaryPrimaryButton,
+                  { opacity: pressed ? 0.9 : 1 },
+                ]}
+              >
+                <Text style={styles.summaryPrimaryButtonText}>Go to Activity History</Text>
+              </Pressable>
+            </View>
+          </Animated.View>
+        </Animated.View>
+      </Modal>
     </View>
   );
 }
@@ -470,6 +846,22 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  historyButton: {
+    position: 'absolute',
+    right: 12,
+    zIndex: 5,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
   },
   bottomDock: {
     position: 'absolute',
@@ -539,26 +931,28 @@ const styles = StyleSheet.create({
   },
   idleActionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingHorizontal: 14,
+    gap: 16,
+    paddingHorizontal: 6,
     paddingBottom: 2,
   },
   idleActionItem: {
+    flex: 1,
     alignItems: 'center',
   },
   idleRoundButton: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+    width: 108,
+    height: 108,
+    borderRadius: 54,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   startRoundButton: {
-    width: 116,
-    height: 116,
-    borderRadius: 58,
+    width: 108,
+    height: 108,
+    borderRadius: 54,
     backgroundColor: '#ff6200',
     alignItems: 'center',
     justifyContent: 'center',
@@ -607,20 +1001,101 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-  summaryCard: {
-    marginTop: 8,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(3, 7, 18, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  summaryModal: {
+    width: '100%',
+    maxWidth: 360,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
   summaryTitle: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
   },
+  summaryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 12,
+  },
   summaryText: {
     fontSize: 13,
     marginTop: 2,
+  },
+  progressTrack: {
+    height: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  progressFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    borderRadius: 999,
+    backgroundColor: '#22c55e',
+  },
+  summaryCountdownText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  difficultyBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  difficultyBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  summaryActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  summarySecondaryButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  summarySecondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  summaryPrimaryButton: {
+    flex: 1.4,
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: '#16a34a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  summaryPrimaryButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
   },
 });

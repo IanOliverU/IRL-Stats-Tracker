@@ -20,7 +20,11 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "irl.stats.tracker"
+      "package": "irl.stats.tracker",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -55,8 +59,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "6344d1f2-10ff-4e2b-a54f-36a04ef162f2"
+        "projectId": "c579c8a4-c3d8-4ba2-9e81-324880fb2781"
       }
-    }
+    },
+    "owner": "hanekanyan"
   }
 }

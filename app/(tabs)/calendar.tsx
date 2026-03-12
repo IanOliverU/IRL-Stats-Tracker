@@ -1,6 +1,6 @@
 import { ProgressBar } from '@/components/ProgressBar';
 import { useGameHydration } from '@/hooks/useGameHydration';
-import { WEEKLY_COMPLETION_BONUSES } from '@/models';
+import { STAT_LABELS, WEEKLY_COMPLETION_BONUSES } from '@/models';
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +40,7 @@ export default function CalendarScreen() {
   useGameHydration();
   const getCompletedDaysForMonth = useGameStore((s) => s.getCompletedDaysForMonth);
   const getCurrentWeekSummary = useGameStore((s) => s.getCurrentWeekSummary);
+  const getCurrentWeeklyRecap = useGameStore((s) => s.getCurrentWeeklyRecap);
   const getRecentWeekSummaries = useGameStore((s) => s.getRecentWeekSummaries);
   const refreshVersion = useGameStore((s) => s.lastAction);
 
@@ -70,6 +71,13 @@ export default function CalendarScreen() {
       return getCurrentWeekSummary();
     },
     [getCurrentWeekSummary, refreshVersion]
+  );
+  const weeklyRecap = useMemo(
+    () => {
+      void refreshVersion;
+      return getCurrentWeeklyRecap();
+    },
+    [getCurrentWeeklyRecap, refreshVersion]
   );
   const recentWeeks = useMemo(
     () => {
@@ -166,6 +174,88 @@ export default function CalendarScreen() {
           <View className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: colors.accent }} />
           <Text className="text-xs" style={{ color: colors.textSecondary }}>
             Completed at least one quest
+          </Text>
+        </View>
+      </View>
+
+      <View
+        className="rounded-xl p-4 mb-5"
+        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+      >
+        <View className="flex-row items-center justify-between mb-3">
+          <View className="flex-row items-center">
+            <Ionicons name="analytics-outline" size={18} color={colors.warning} />
+            <Text className="text-base font-semibold ml-2" style={{ color: colors.text }}>
+              Weekly Recap
+            </Text>
+          </View>
+          <Text className="text-xs font-semibold" style={{ color: colors.textTertiary }}>
+            {formatShortDateKey(weeklyRecap.weekStartKey)} - {formatShortDateKey(weeklyRecap.weekEndKey)}
+          </Text>
+        </View>
+
+        <View className="flex-row flex-wrap gap-3">
+          <View
+            className="rounded-xl p-3"
+            style={{ backgroundColor: colors.background, borderWidth: 1, borderColor: colors.cardBorder, width: '48%' }}
+          >
+            <Text className="text-[11px] uppercase" style={{ color: colors.textTertiary }}>
+              Quests
+            </Text>
+            <Text className="mt-1 text-xl font-bold" style={{ color: colors.text }}>
+              {weeklyRecap.totalQuestsCompleted}
+            </Text>
+          </View>
+          <View
+            className="rounded-xl p-3"
+            style={{ backgroundColor: colors.background, borderWidth: 1, borderColor: colors.cardBorder, width: '48%' }}
+          >
+            <Text className="text-[11px] uppercase" style={{ color: colors.textTertiary }}>
+              Week XP
+            </Text>
+            <Text className="mt-1 text-xl font-bold" style={{ color: colors.text }}>
+              {weeklyRecap.totalXpEarned}
+            </Text>
+          </View>
+          <View
+            className="rounded-xl p-3"
+            style={{ backgroundColor: colors.background, borderWidth: 1, borderColor: colors.cardBorder, width: '48%' }}
+          >
+            <Text className="text-[11px] uppercase" style={{ color: colors.textTertiary }}>
+              Strongest Stat
+            </Text>
+            <Text className="mt-1 text-sm font-semibold" style={{ color: colors.text }}>
+              {weeklyRecap.strongestStat ? STAT_LABELS[weeklyRecap.strongestStat] : 'No standout yet'}
+            </Text>
+            <Text className="mt-1 text-xs" style={{ color: colors.textSecondary }}>
+              {weeklyRecap.strongestStat ? `${weeklyRecap.strongestStatXp} XP gained` : 'Complete quests to build momentum'}
+            </Text>
+          </View>
+          <View
+            className="rounded-xl p-3"
+            style={{ backgroundColor: colors.background, borderWidth: 1, borderColor: colors.cardBorder, width: '48%' }}
+          >
+            <Text className="text-[11px] uppercase" style={{ color: colors.textTertiary }}>
+              Weekly Bonus
+            </Text>
+            <Text className="mt-1 text-xl font-bold" style={{ color: colors.accent }}>
+              +{weeklyRecap.weeklyBonusXp} XP
+            </Text>
+            <Text className="mt-1 text-xs" style={{ color: colors.textSecondary }}>
+              {weeklyRecap.completedDays}/7 active days this week
+            </Text>
+          </View>
+        </View>
+
+        <View className="mt-4">
+          <ProgressBar progress={weeklyRecap.consistencyPercent / 100} height={10} />
+        </View>
+        <View className="flex-row items-center justify-between mt-3">
+          <Text className="text-xs" style={{ color: colors.textSecondary }}>
+            Current streak: {weeklyRecap.currentStreak} day{weeklyRecap.currentStreak === 1 ? '' : 's'}
+          </Text>
+          <Text className="text-xs font-semibold" style={{ color: colors.accent }}>
+            Consistency: {weeklyRecap.consistencyPercent}%
           </Text>
         </View>
       </View>

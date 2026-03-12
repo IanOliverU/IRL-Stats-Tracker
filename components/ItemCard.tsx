@@ -1,4 +1,4 @@
-import { getItemDefinitionById, type Item } from '@/models';
+import { getItemDefinitionById, getItemRarityById, type Item, type ItemRarity } from '@/models';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -12,17 +12,19 @@ export function ItemCard({ item }: ItemCardProps) {
   const colors = useAppColors();
   const unlocked = !!item.unlockedAt;
   const definition = getItemDefinitionById(item.id);
+  const rarity = getItemRarityById(item.id);
   const icon = (definition?.icon as keyof typeof Ionicons.glyphMap | undefined) ?? 'cube-outline';
   const effectLabel = definition?.effectLabel ?? (item.bonusAmount > 0 ? `+${item.bonusAmount} ${item.statBonus}` : 'Inventory reward');
   const flavor = definition?.flavor ?? item.unlockCondition;
   const category = definition?.category ?? 'stat';
+  const rarityColor = getRarityColor(rarity, colors);
 
   return (
     <View
       className="rounded-xl border p-4 mb-3"
       style={{
         backgroundColor: colors.card,
-        borderColor: unlocked ? colors.accent + '30' : colors.cardBorder,
+        borderColor: unlocked ? rarityColor + '55' : colors.cardBorder,
         opacity: unlocked ? 1 : 0.6,
       }}
     >
@@ -31,36 +33,32 @@ export function ItemCard({ item }: ItemCardProps) {
           <View
             className="w-8 h-8 rounded-lg items-center justify-center mr-3"
             style={{
-              backgroundColor: unlocked ? colors.accent + '15' : colors.inputBg,
+              backgroundColor: unlocked ? rarityColor + '18' : colors.inputBg,
             }}
           >
             <Ionicons
               name={icon as any}
               size={16}
-              color={unlocked ? colors.accent : colors.textTertiary}
+              color={unlocked ? rarityColor : colors.textTertiary}
             />
           </View>
           <Text className="text-sm font-semibold flex-1" style={{ color: colors.text }}>
             {item.name}
           </Text>
         </View>
-        {unlocked ? (
+        <View className="items-end">
           <View
             className="px-2.5 py-1 rounded-lg"
-            style={{ backgroundColor: colors.success + '18' }}
+            style={{ backgroundColor: unlocked ? rarityColor + '18' : colors.inputBg }}
           >
-            <Text className="text-xs font-semibold" style={{ color: colors.success }}>
-              {category.toUpperCase()}
+            <Text className="text-xs font-semibold" style={{ color: unlocked ? rarityColor : colors.textTertiary }}>
+              {rarity}
             </Text>
           </View>
-        ) : (
-          <View className="flex-row items-center">
-            <Ionicons name="lock-closed-outline" size={13} color={colors.textTertiary} />
-            <Text className="text-xs ml-1" style={{ color: colors.textTertiary }}>
-              Locked
-            </Text>
-          </View>
-        )}
+          <Text className="mt-1 text-[10px] font-semibold uppercase" style={{ color: colors.textTertiary }}>
+            {category}
+          </Text>
+        </View>
       </View>
       <Text
         className="text-xs ml-11"
@@ -78,4 +76,18 @@ export function ItemCard({ item }: ItemCardProps) {
       </Text>
     </View>
   );
+}
+
+function getRarityColor(rarity: ItemRarity, colors: ReturnType<typeof useAppColors>): string {
+  switch (rarity) {
+    case 'Rare':
+      return colors.accent;
+    case 'Epic':
+      return colors.warning;
+    case 'Legendary':
+      return '#f97316';
+    case 'Common':
+    default:
+      return colors.textSecondary;
+  }
 }
