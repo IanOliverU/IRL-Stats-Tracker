@@ -81,18 +81,17 @@ export default function RootLayout() {
         </View>
       ) : (
         <Stack screenOptions={{ headerShown: false }}>
-          {authUser ? (
-            <>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen
-                name="quest/[questType]/[questId]"
-                options={{ headerShown: true, title: 'Quest Detail' }}
-              />
-              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-            </>
-          ) : (
+          <Stack.Protected guard={!authUser}>
             <Stack.Screen name="auth" />
-          )}
+          </Stack.Protected>
+          <Stack.Protected guard={!!authUser}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen
+              name="quest/[questType]/[questId]"
+              options={{ headerShown: true, title: 'Quest Detail' }}
+            />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+          </Stack.Protected>
         </Stack>
       )}
     </ThemeProvider>

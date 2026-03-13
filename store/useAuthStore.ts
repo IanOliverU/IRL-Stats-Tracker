@@ -37,6 +37,14 @@ interface AuthActions {
 let authSubscription: { unsubscribe: () => void } | null = null;
 const authRedirectTo = Linking.createURL('auth/callback');
 
+function getAuthState(session: Session | null): AuthState {
+  return {
+    initialized: true,
+    session,
+    user: session?.user ?? null,
+  };
+}
+
 async function setSessionFromUrl(url: string): Promise<void> {
   const hashIndex = url.indexOf('#');
   const queryIndex = url.indexOf('?');
@@ -91,11 +99,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
           void ensureProfile(session.user);
         }
 
-        set({
-          initialized: true,
-          session,
-          user: session?.user ?? null,
-        });
+        set(getAuthState(session));
       });
 
       authSubscription = data.subscription;
@@ -106,11 +110,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
       console.warn('Failed to load Supabase session', error);
     }
 
-    set({
-      initialized: true,
-      session: data.session,
-      user: data.session?.user ?? null,
-    });
+    set(getAuthState(data.session));
 
     if (data.session?.user) {
       await ensureProfile(data.session.user);
@@ -130,6 +130,8 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
     if (error) {
       throw error;
     }
+
+    set(getAuthState(data.session));
 
     if (data.user) {
       await ensureProfile(data.user);
@@ -168,6 +170,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
     }
 
     if (data.user && data.session) {
+      set(getAuthState(data.session));
       await ensureProfile(data.user);
     }
 
@@ -181,5 +184,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
     if (error) {
       throw error;
     }
+
+    set(getAuthState(null));
   },
 }));

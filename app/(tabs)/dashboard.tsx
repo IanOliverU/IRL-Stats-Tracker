@@ -39,6 +39,7 @@ const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
 export default function DashboardScreen() {
   useGameHydration();
   const router = useRouter();
+  const authUser = useAuthStore((s) => s.user);
   const user = useGameStore((s) => s.user);
   const items = useGameStore((s) => s.items);
   const habits = useGameStore((s) => s.habits);
@@ -81,6 +82,7 @@ export default function DashboardScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
   const [showResetAnimation, setShowResetAnimation] = useState(false);
+  const [isResettingToAuth, setIsResettingToAuth] = useState(false);
 
   // Welcome / name modal state
   const [showNameModal, setShowNameModal] = useState(false);
@@ -102,10 +104,13 @@ export default function DashboardScreen() {
 
   // Show name modal if user has no name set
   useEffect(() => {
-    if (user && !user.name) {
+    if (user && !user.name && authUser && !isResettingToAuth) {
       setShowNameModal(true);
+      return;
     }
-  }, [user]);
+
+    setShowNameModal(false);
+  }, [authUser, isResettingToAuth, user]);
 
   const handleSetName = useCallback(() => {
     const trimmed = nameInput.trim();
@@ -125,14 +130,20 @@ export default function DashboardScreen() {
   }, []);
 
   const handleAnimationComplete = useCallback(async () => {
+    setIsResettingToAuth(true);
+    setShowNameModal(false);
+    setNameInput('');
     resetData();
     setShowResetAnimation(false);
     try {
       await signOut();
     } catch (error) {
       console.warn('Failed to sign out after reset', error);
+    } finally {
+      router.replace('/auth');
+      setIsResettingToAuth(false);
     }
-  }, [resetData, signOut]);
+  }, [resetData, router, signOut]);
 
   if (!user) {
     return (

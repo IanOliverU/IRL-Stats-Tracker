@@ -7,13 +7,14 @@ import { useGameStore } from '@/store/useGameStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
 
 export default function CharacterScreen() {
+  const router = useRouter();
   useGameHydration();
   const user = useGameStore((s) => s.user);
   const items = useGameStore((s) => s.items);
@@ -65,6 +66,7 @@ export default function CharacterScreen() {
     setIsSigningOut(true);
     try {
       await signOut();
+      router.replace('/auth');
     } catch (error) {
       console.warn('Failed to sign out', error);
     } finally {

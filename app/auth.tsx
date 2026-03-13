@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -48,6 +49,8 @@ const OAUTH_PROVIDERS: readonly {
 ];
 
 export default function AuthScreen() {
+  const router = useRouter();
+  const authUser = useAuthStore((s) => s.user);
   const signInWithEmail = useAuthStore((s) => s.signInWithEmail);
   const signInWithProvider = useAuthStore((s) => s.signInWithProvider);
   const signUpWithEmail = useAuthStore((s) => s.signUpWithEmail);
@@ -66,6 +69,12 @@ export default function AuthScreen() {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const isSignUp = mode === 'signUp';
+
+  React.useEffect(() => {
+    if (authUser) {
+      router.replace('/');
+    }
+  }, [authUser, router]);
 
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
@@ -112,6 +121,7 @@ export default function AuthScreen() {
           email: trimmedEmail,
           password,
         });
+        router.replace('/');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Authentication failed.';
