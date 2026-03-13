@@ -1,5 +1,7 @@
+import { WeatherCard } from '@/components/WeatherCard';
 import { ProgressBar } from '@/components/ProgressBar';
 import { useGameHydration } from '@/hooks/useGameHydration';
+import type { WeatherResponse, WeatherSettings, SavedWeatherCity } from '@/lib/weather';
 import {
   getNextAchievementPreview,
   getNextUnlockPreview,
@@ -7,6 +9,14 @@ import {
 } from '@/lib/progression';
 import type { StatType } from '@/models';
 import { STAT_LABELS, totalXpForLevel, xpRequiredForLevel } from '@/models';
+import {
+  addWeatherCity,
+  loadWeatherDashboard,
+  refreshWeatherDashboard,
+  selectWeatherCity,
+  setDefaultWeatherCity,
+} from '@/services/weatherService';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,6 +55,8 @@ export default function WelcomeScreen() {
   const hydrated = useGameHydration();
   const router = useRouter();
   const colors = useAppColors();
+  const authUser = useAuthStore((s) => s.user);
+  const authUserId = authUser?.id ?? null;
 
   const user = useGameStore((s) => s.user);
   const items = useGameStore((s) => s.items);
@@ -55,6 +67,20 @@ export default function WelcomeScreen() {
   const getQuestStreakSummary = useGameStore((s) => s.getQuestStreakSummary);
 
   const [now, setNow] = useState(() => new Date());
+  const [savedCities, setSavedCities] = useState<SavedWeatherCity[]>([]);
+  const [weatherSettings, setWeatherSettings] = useState<WeatherSettings>({
+    selectedCityId: null,
+    defaultCityId: null,
+    unit: 'C',
+  });
+  const [weatherData, setWeatherData] = useState<WeatherResponse | null>(null);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+  const [weatherRefreshing, setWeatherRefreshing] = useState(false);
+  const [savingWeatherCity, setSavingWeatherCity] = useState(false);
+  const [settingDefaultCity, setSettingDefaultCity] = useState(false);
+  const [showAddCityInput, setShowAddCityInput] = useState(false);
+  const [cityInput, setCityInput] = useState('');
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -68,6 +94,114 @@ export default function WelcomeScreen() {
       router.replace('/(tabs)/dashboard');
     }
   }, [hydrated, router, user, user?.name]);
+
+  useEffect(() => {
+    const userId = authUserId;
+
+    if (!hydrated || !userId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function hydrateWeather() {
+      setWeatherLoading(true);
+      const state = await loadWeatherDashboard(userId!);
+
+      if (cancelled) {
+        return;
+      }
+
+      setSavedCities(state.cities);
+      setWeatherSettings(state.settings);
+      setWeatherData(state.weather);
+      setWeatherError(state.errorMessage);
+      setWeatherLoading(false);
+    }
+
+    void hydrateWeather().catch((error) => {
+      if (cancelled) {
+        return;
+      }
+
+      setWeatherError(error instanceof Error ? error.message : 'Unable to load weather.');
+      setWeatherLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUserId, hydrated]);
+
+  function applyWeatherState(state: {
+    cities: SavedWeatherCity[];
+    settings: WeatherSettings;
+    weather: WeatherResponse | null;
+    errorMessage: string | null;
+  }) {
+    setSavedCities(state.cities);
+    setWeatherSettings(state.settings);
+    setWeatherData(state.weather);
+    setWeatherError(state.errorMessage);
+  }
+
+  async function handleRefreshWeather() {
+    if (!authUserId) return;
+
+    setWeatherRefreshing(true);
+    try {
+      const state = await refreshWeatherDashboard(authUserId);
+      applyWeatherState(state);
+    } catch (error) {
+      setWeatherError(error instanceof Error ? error.message : 'Unable to refresh weather.');
+    } finally {
+      setWeatherRefreshing(false);
+    }
+  }
+
+  async function handleAddCity() {
+    if (!authUserId) return;
+
+    setSavingWeatherCity(true);
+    try {
+      const state = await addWeatherCity(authUserId, cityInput);
+      applyWeatherState(state);
+      setCityInput('');
+      setShowAddCityInput(false);
+    } catch (error) {
+      setWeatherError(error instanceof Error ? error.message : 'Unable to add city.');
+    } finally {
+      setSavingWeatherCity(false);
+    }
+  }
+
+  async function handleSelectCity(cityId: string) {
+    if (!authUserId || cityId === weatherSettings.selectedCityId) return;
+
+    setWeatherRefreshing(true);
+    try {
+      const state = await selectWeatherCity(authUserId, cityId);
+      applyWeatherState(state);
+    } catch (error) {
+      setWeatherError(error instanceof Error ? error.message : 'Unable to switch cities.');
+    } finally {
+      setWeatherRefreshing(false);
+    }
+  }
+
+  async function handleSetDefaultCity() {
+    if (!authUserId || !weatherSettings.selectedCityId) return;
+
+    setSettingDefaultCity(true);
+    try {
+      const state = await setDefaultWeatherCity(authUserId, weatherSettings.selectedCityId);
+      applyWeatherState(state);
+    } catch (error) {
+      setWeatherError(error instanceof Error ? error.message : 'Unable to save the default city.');
+    } finally {
+      setSettingDefaultCity(false);
+    }
+  }
 
   const effectiveStats = useMemo<Record<StatType, number>>(() => {
     const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
@@ -215,6 +349,28 @@ export default function WelcomeScreen() {
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
     >
+      <WeatherCard
+        colors={colors}
+        weather={weatherData}
+        cities={savedCities}
+        selectedCityId={weatherSettings.selectedCityId}
+        defaultCityId={weatherSettings.defaultCityId}
+        unit={weatherSettings.unit}
+        error={weatherError}
+        loading={weatherLoading}
+        refreshing={weatherRefreshing}
+        savingCity={savingWeatherCity}
+        settingDefault={settingDefaultCity}
+        addCityOpen={showAddCityInput}
+        addCityValue={cityInput}
+        onChangeAddCity={setCityInput}
+        onToggleAddCity={() => setShowAddCityInput((current) => !current)}
+        onSubmitAddCity={() => void handleAddCity()}
+        onSelectCity={(cityId) => void handleSelectCity(cityId)}
+        onRefresh={() => void handleRefreshWeather()}
+        onSetDefault={() => void handleSetDefaultCity()}
+      />
+
       <View
         className="mt-3 rounded-3xl p-5"
         style={{
