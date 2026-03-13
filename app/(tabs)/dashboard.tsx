@@ -15,6 +15,7 @@ import { getModalBackdropColor } from '@/lib/modalBackdrop';
 import type { StatType } from '@/models';
 import { MAX_CUSTOM_QUESTS_PER_DAY, totalXpForLevel, xpRequiredForLevel } from '@/models';
 import type { QuestCompletionFeedback as QuestCompletionFeedbackData } from '@/services/habitService';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -51,6 +52,7 @@ export default function DashboardScreen() {
   const dismissItemUnlock = useGameStore((s) => s.dismissItemUnlock);
   const dismissItemUnlocks = useGameStore((s) => s.dismissItemUnlocks);
   const resetData = useGameStore((s) => s.resetData);
+  const signOut = useAuthStore((s) => s.signOut);
   const setUserName = useGameStore((s) => s.setUserName);
   const getStreak = useGameStore((s) => s.getStreak);
   const isCompletedToday = useGameStore((s) => s.isCompletedToday);
@@ -122,10 +124,15 @@ export default function DashboardScreen() {
     setShowResetAnimation(true);
   }, []);
 
-  const handleAnimationComplete = useCallback(() => {
+  const handleAnimationComplete = useCallback(async () => {
     resetData();
     setShowResetAnimation(false);
-  }, [resetData]);
+    try {
+      await signOut();
+    } catch (error) {
+      console.warn('Failed to sign out after reset', error);
+    }
+  }, [resetData, signOut]);
 
   if (!user) {
     return (

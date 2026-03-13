@@ -175,7 +175,7 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                                             Reset Data
                                         </Text>
                                         <Text className="text-xs mt-0.5" style={{ color: colors.textSecondary }}>
-                                            Clear all progress and start fresh
+                                            Clear all progress, sign out, and start fresh
                                         </Text>
                                     </View>
                                     <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
@@ -196,7 +196,7 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                                         </Text>
                                     </View>
                                     <Text className="text-xs mb-4" style={{ color: destructiveSecondaryText }}>
-                                        This will permanently delete all your habits, stats, and progress.
+                                        This will permanently delete all your habits, stats, and progress, then sign you out.
                                     </Text>
                                     {!isCountdownDone ? (
                                         <View className="items-center py-3">
@@ -294,7 +294,7 @@ export function SettingsModal({ visible, onClose, onResetTriggered }: SettingsMo
                             </Text>
                         </View>
                         <Text className="text-sm text-center leading-5 mb-6" style={{ color: colors.textSecondary }}>
-                            Your progress and stats will be permanently deleted and cannot be restored.
+                            Your progress and stats will be permanently deleted, you will be signed out, and this cannot be restored.
                         </Text>
                         <Pressable
                             onPress={handleConfirmReset}

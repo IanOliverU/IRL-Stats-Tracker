@@ -4,11 +4,12 @@ import { useGameHydration } from '@/hooks/useGameHydration';
 import type { StatType } from '@/models';
 import { STAT_DESCRIPTIONS, totalXpForLevel, xpRequiredForLevel } from '@/models';
 import { useGameStore } from '@/store/useGameStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useMemo } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 const STAT_ORDER: StatType[] = ['STR', 'INT', 'WIS', 'CHA', 'VIT'];
 
@@ -18,8 +19,11 @@ export default function CharacterScreen() {
   const items = useGameStore((s) => s.items);
   const getTotalMissionXp = useGameStore((s) => s.getTotalMissionXp);
   const refreshUser = useGameStore((s) => s.refreshUser);
+  const authUser = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
 
   const colors = useAppColors();
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const effectiveStats = useMemo<Record<StatType, number>>(() => {
     const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
     for (const item of items) {
@@ -56,6 +60,17 @@ export default function CharacterScreen() {
   const xpProgress = required > 0 ? xpIntoLevel / required : 1;
   const totalStats = STAT_ORDER.reduce((sum, stat) => sum + effectiveStats[stat], 0);
   const totalMissionXp = getTotalMissionXp();
+
+  async function handleSignOut() {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+    } catch (error) {
+      console.warn('Failed to sign out', error);
+    } finally {
+      setIsSigningOut(false);
+    }
+  }
 
   return (
     <ScrollView
@@ -144,6 +159,51 @@ export default function CharacterScreen() {
               {totalMissionXp.toLocaleString()}
             </Text>
           </View>
+        </View>
+      </View>
+
+      <View className="mt-8">
+        <View className="flex-row items-center mb-3">
+          <Ionicons name="cloud-outline" size={18} color={colors.text} />
+          <Text className="text-lg font-semibold ml-2" style={{ color: colors.text }}>
+            Cloud Account
+          </Text>
+        </View>
+
+        <View
+          className="rounded-xl p-4"
+          style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}
+        >
+          <Text className="text-xs uppercase tracking-widest" style={{ color: colors.textTertiary }}>
+            Signed in as
+          </Text>
+          <Text className="mt-2 text-sm font-semibold" style={{ color: colors.text }}>
+            {authUser?.email ?? 'No email available'}
+          </Text>
+          <Text className="mt-2 text-xs leading-5" style={{ color: colors.textSecondary }}>
+            This account is now connected to Supabase. Your gameplay data is still local until we finish the cloud
+            migration layer.
+          </Text>
+
+          <Pressable
+            onPress={() => void handleSignOut()}
+            disabled={isSigningOut}
+            className="mt-4 items-center rounded-xl py-3.5"
+            style={({ pressed }) => ({
+              backgroundColor: colors.inputBg,
+              borderWidth: 1,
+              borderColor: colors.inputBorder,
+              opacity: pressed || isSigningOut ? 0.85 : 1,
+            })}
+          >
+            {isSigningOut ? (
+              <ActivityIndicator color={colors.text} />
+            ) : (
+              <Text className="text-sm font-semibold" style={{ color: colors.text }}>
+                Sign Out
+              </Text>
+            )}
+          </Pressable>
         </View>
       </View>
     </ScrollView>
