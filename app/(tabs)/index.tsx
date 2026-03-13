@@ -63,6 +63,12 @@ export default function WelcomeScreen() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (hydrated && user && !user.name?.trim()) {
+      router.replace('/(tabs)/dashboard');
+    }
+  }, [hydrated, router, user, user?.name]);
+
   const effectiveStats = useMemo<Record<StatType, number>>(() => {
     const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
     for (const item of items) {
