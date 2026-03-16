@@ -1,5 +1,4 @@
 // @ts-nocheck
-import { createClient } from 'npm:@supabase/supabase-js@2';
 
 type WeatherUnit = 'C' | 'F';
 
@@ -10,36 +9,74 @@ type GeocodingResult = {
   longitude: number;
 };
 
-type CurrentConditionsResponse = {
-  weatherCondition?: {
-    description?: { text?: string };
-    type?: string;
-    iconBaseUri?: string;
-  };
-  temperature?: { degrees?: number };
-  feelsLikeTemperature?: { degrees?: number };
-  relativeHumidity?: number;
-  isDaytime?: boolean;
+type OpenWeatherGeoResult = {
+  name?: string;
+  lat?: number;
+  lon?: number;
+  country?: string;
+  state?: string;
 };
 
-type ForecastDaysResponse = {
-  forecastDays?: Array<{
-    displayDate?: { year?: number; month?: number; day?: number };
-    minTemperature?: { degrees?: number };
-    maxTemperature?: { degrees?: number };
-    daytimeForecast?: {
-      weatherCondition?: {
-        description?: { text?: string };
-        type?: string;
-      };
+type OpenWeatherCurrentResponse = {
+  cod?: number | string;
+  message?: string;
+  dt?: number;
+  timezone?: number;
+  name?: string;
+  main?: {
+    temp?: number;
+    feels_like?: number;
+    humidity?: number;
+  };
+  weather?: {
+    main?: string;
+    description?: string;
+    icon?: string;
+  }[];
+  sys?: {
+    sunrise?: number;
+    sunset?: number;
+  };
+};
+
+type OpenWeatherForecastItem = {
+  dt?: number;
+  main?: {
+    temp?: number;
+    temp_min?: number;
+    temp_max?: number;
+  };
+  weather?: {
+    main?: string;
+    description?: string;
+    icon?: string;
+  }[];
+  sys?: {
+    pod?: string;
+  };
+};
+
+type OpenWeatherForecastResponse = {
+  cod?: number | string;
+  message?: string;
+  city?: {
+    name?: string;
+    timezone?: number;
+    coord?: {
+      lat?: number;
+      lon?: number;
     };
-    nighttimeForecast?: {
-      weatherCondition?: {
-        description?: { text?: string };
-        type?: string;
-      };
-    };
-  }>;
+  };
+  list?: OpenWeatherForecastItem[];
+};
+
+type DailyAggregate = {
+  date: string;
+  min: number | null;
+  max: number | null;
+  condition: string;
+  icon: string | null;
+  bestHourDelta: number;
 };
 
 const corsHeaders = {
@@ -67,135 +104,111 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function toDegrees(value: { degrees?: number } | undefined): number | null {
-  return typeof value?.degrees === 'number' ? Math.round(value.degrees) : null;
+function roundNumber(value: number | undefined): number | null {
+  return typeof value === 'number' ? Math.round(value) : null;
 }
 
-function toConditionText(
-  condition:
-    | {
-        description?: { text?: string };
-        type?: string;
-      }
-    | undefined
-): string {
-  if (condition?.description?.text) {
-    return condition.description.text;
-  }
-
-  if (condition?.type) {
-    return condition.type
-      .toLowerCase()
-      .split('_')
+function toConditionText(condition: { main?: string; description?: string } | undefined): string {
+  if (typeof condition?.description === 'string' && condition.description.trim()) {
+    return condition.description
+      .split(' ')
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
+  }
+
+  if (typeof condition?.main === 'string' && condition.main.trim()) {
+    return condition.main;
   }
 
   return 'Unavailable';
 }
 
-function toIsoDate(date: { year?: number; month?: number; day?: number } | undefined): string {
-  const year = date?.year ?? 1970;
-  const month = String(date?.month ?? 1).padStart(2, '0');
-  const day = String(date?.day ?? 1).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function toConditionToken(condition: { main?: string; icon?: string } | undefined): string | null {
+  if (typeof condition?.main === 'string' && condition.main.trim()) {
+    return condition.main;
+  }
+
+  if (typeof condition?.icon === 'string' && condition.icon.trim()) {
+    return condition.icon;
+  }
+
+  return null;
 }
 
-async function requireAuthenticatedUser(req: Request) {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  const authHeader = req.headers.get('Authorization');
+function toDisplayCityName(name: string, state?: string, country?: string): string {
+  const parts = [name.trim()];
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new HttpError(500, 'Missing Supabase runtime environment variables.');
+  if (typeof state === 'string' && state.trim()) {
+    parts.push(state.trim());
   }
 
-  if (!authHeader) {
-    throw new HttpError(401, 'Missing authorization header.');
+  if (typeof country === 'string' && country.trim()) {
+    parts.push(country.trim().toUpperCase());
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: {
-        Authorization: authHeader,
-      },
-    },
-  });
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    throw new HttpError(401, 'Unauthorized weather request.');
-  }
-
-  return user;
+  return parts.join(', ');
 }
 
-function resolveCityName(result: Record<string, unknown>): string {
-  const components = Array.isArray(result.address_components)
-    ? (result.address_components as Array<Record<string, unknown>>)
-    : [];
+function buildPlaceId(latitude: number, longitude: number, name: string): string {
+  return `owm:${name.toLowerCase()}:${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+}
 
-  const preferredTypeOrder = [
-    'locality',
-    'administrative_area_level_2',
-    'administrative_area_level_1',
-    'postal_town',
-  ];
+function getUnitsSystem(unit: WeatherUnit): 'metric' | 'imperial' {
+  return unit === 'F' ? 'imperial' : 'metric';
+}
 
-  for (const type of preferredTypeOrder) {
-    const match = components.find((component) => {
-      const types = Array.isArray(component.types) ? (component.types as string[]) : [];
-      return types.includes(type);
-    });
+function getLocalDateParts(unixSeconds: number, timezoneOffsetSeconds: number): { date: string; hour: number } {
+  const localDate = new Date((unixSeconds + timezoneOffsetSeconds) * 1000);
 
-    if (typeof match?.long_name === 'string' && match.long_name.trim()) {
-      return match.long_name.trim();
-    }
+  return {
+    date: localDate.toISOString().slice(0, 10),
+    hour: localDate.getUTCHours(),
+  };
+}
+
+function isCurrentDaytime(current: OpenWeatherCurrentResponse): boolean {
+  const timestamp = typeof current.dt === 'number' ? current.dt : null;
+  const sunrise = typeof current.sys?.sunrise === 'number' ? current.sys.sunrise : null;
+  const sunset = typeof current.sys?.sunset === 'number' ? current.sys.sunset : null;
+
+  if (timestamp !== null && sunrise !== null && sunset !== null) {
+    return timestamp >= sunrise && timestamp < sunset;
   }
 
-  if (typeof result.formatted_address === 'string' && result.formatted_address.trim()) {
-    return result.formatted_address.split(',')[0].trim();
-  }
-
-  return 'Unknown City';
+  return String(current.weather?.[0]?.icon ?? '').endsWith('d');
 }
 
 async function geocodeCity(city: string, apiKey: string): Promise<GeocodingResult> {
-  const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
-  url.searchParams.set('address', city);
-  url.searchParams.set('key', apiKey);
+  const url = new URL('https://api.openweathermap.org/geo/1.0/direct');
+  url.searchParams.set('q', city);
+  url.searchParams.set('limit', '1');
+  url.searchParams.set('appid', apiKey);
 
   const response = await fetch(url);
-  const data = (await response.json()) as {
-    status?: string;
-    error_message?: string;
-    results?: Array<Record<string, unknown>>;
-  };
+  const data = (await response.json()) as OpenWeatherGeoResult[] | { message?: string };
 
   if (!response.ok) {
-    throw new HttpError(response.status, data.error_message ?? 'Geocoding request failed.');
+    const message =
+      typeof (data as { message?: string })?.message === 'string'
+        ? (data as { message?: string }).message
+        : 'Geocoding request failed.';
+    throw new HttpError(response.status, message);
   }
 
-  if (data.status !== 'OK' || !data.results?.length) {
+  if (!Array.isArray(data) || data.length === 0) {
     throw new HttpError(404, `Unable to find weather for "${city}".`);
   }
 
-  const first = data.results[0];
-  const location = (first.geometry as { location?: { lat?: number; lng?: number } } | undefined)?.location;
-
-  if (typeof location?.lat !== 'number' || typeof location?.lng !== 'number') {
-    throw new HttpError(422, 'Geocoding response did not include coordinates.');
+  const first = data[0];
+  if (typeof first.lat !== 'number' || typeof first.lon !== 'number' || typeof first.name !== 'string') {
+    throw new HttpError(422, 'Geocoding response did not include valid coordinates.');
   }
 
   return {
-    city: resolveCityName(first),
-    placeId: typeof first.place_id === 'string' ? first.place_id : null,
-    latitude: location.lat,
-    longitude: location.lng,
+    city: toDisplayCityName(first.name, first.state, first.country),
+    placeId: buildPlaceId(first.lat, first.lon, first.name),
+    latitude: first.lat,
+    longitude: first.lon,
   };
 }
 
@@ -204,48 +217,100 @@ async function fetchCurrentConditions(
   longitude: number,
   apiKey: string,
   unit: WeatherUnit
-): Promise<CurrentConditionsResponse> {
-  const url = new URL('https://weather.googleapis.com/v1/currentConditions:lookup');
-  url.searchParams.set('key', apiKey);
-  url.searchParams.set('location.latitude', String(latitude));
-  url.searchParams.set('location.longitude', String(longitude));
-  url.searchParams.set('unitsSystem', unit === 'F' ? 'IMPERIAL' : 'METRIC');
-  url.searchParams.set('languageCode', 'en');
+): Promise<OpenWeatherCurrentResponse> {
+  const url = new URL('https://api.openweathermap.org/data/2.5/weather');
+  url.searchParams.set('lat', String(latitude));
+  url.searchParams.set('lon', String(longitude));
+  url.searchParams.set('units', getUnitsSystem(unit));
+  url.searchParams.set('lang', 'en');
+  url.searchParams.set('appid', apiKey);
 
   const response = await fetch(url);
-  const data = (await response.json()) as Record<string, unknown>;
+  const data = (await response.json()) as OpenWeatherCurrentResponse;
 
   if (!response.ok) {
-    throw new HttpError(response.status, 'Current weather request failed.');
+    throw new HttpError(response.status, data.message ?? 'Current weather request failed.');
   }
 
-  return data as CurrentConditionsResponse;
+  return data;
 }
 
-async function fetchDailyForecast(
+async function fetchForecast(
   latitude: number,
   longitude: number,
   apiKey: string,
-  unit: WeatherUnit,
-  days: number
-): Promise<ForecastDaysResponse> {
-  const url = new URL('https://weather.googleapis.com/v1/forecast/days:lookup');
-  url.searchParams.set('key', apiKey);
-  url.searchParams.set('location.latitude', String(latitude));
-  url.searchParams.set('location.longitude', String(longitude));
-  url.searchParams.set('unitsSystem', unit === 'F' ? 'IMPERIAL' : 'METRIC');
-  url.searchParams.set('languageCode', 'en');
-  url.searchParams.set('days', String(days));
-  url.searchParams.set('pageSize', String(days));
+  unit: WeatherUnit
+): Promise<OpenWeatherForecastResponse> {
+  const url = new URL('https://api.openweathermap.org/data/2.5/forecast');
+  url.searchParams.set('lat', String(latitude));
+  url.searchParams.set('lon', String(longitude));
+  url.searchParams.set('units', getUnitsSystem(unit));
+  url.searchParams.set('lang', 'en');
+  url.searchParams.set('appid', apiKey);
 
   const response = await fetch(url);
-  const data = (await response.json()) as Record<string, unknown>;
+  const data = (await response.json()) as OpenWeatherForecastResponse;
 
   if (!response.ok) {
-    throw new HttpError(response.status, 'Daily forecast request failed.');
+    throw new HttpError(response.status, data.message ?? 'Forecast request failed.');
   }
 
-  return data as ForecastDaysResponse;
+  return data;
+}
+
+function buildDailyForecast(
+  forecast: OpenWeatherForecastResponse,
+  days: number
+): { date: string; min: number | null; max: number | null; condition: string; icon: string | null }[] {
+  const timezoneOffset = typeof forecast.city?.timezone === 'number' ? forecast.city.timezone : 0;
+  const grouped = new Map<string, DailyAggregate>();
+
+  for (const entry of forecast.list ?? []) {
+    if (typeof entry.dt !== 'number') {
+      continue;
+    }
+
+    const { date, hour } = getLocalDateParts(entry.dt, timezoneOffset);
+    const condition = entry.weather?.[0];
+    const tempMin = roundNumber(entry.main?.temp_min ?? entry.main?.temp);
+    const tempMax = roundNumber(entry.main?.temp_max ?? entry.main?.temp);
+    const hourDelta = Math.abs(hour - 12);
+
+    const existing = grouped.get(date);
+    if (!existing) {
+      grouped.set(date, {
+        date,
+        min: tempMin,
+        max: tempMax,
+        condition: toConditionText(condition),
+        icon: toConditionToken(condition),
+        bestHourDelta: hourDelta,
+      });
+      continue;
+    }
+
+    existing.min =
+      existing.min === null ? tempMin : tempMin === null ? existing.min : Math.min(existing.min, tempMin);
+    existing.max =
+      existing.max === null ? tempMax : tempMax === null ? existing.max : Math.max(existing.max, tempMax);
+
+    if (hourDelta < existing.bestHourDelta) {
+      existing.condition = toConditionText(condition);
+      existing.icon = toConditionToken(condition);
+      existing.bestHourDelta = hourDelta;
+    }
+  }
+
+  return Array.from(grouped.values())
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .slice(0, days)
+    .map(({ date, min, max, condition, icon }) => ({
+      date,
+      min,
+      max,
+      condition,
+      icon,
+    }));
 }
 
 Deno.serve(async (req) => {
@@ -254,15 +319,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    await requireAuthenticatedUser(req);
-
     if (req.method !== 'POST') {
       throw new HttpError(405, 'Use POST for weather requests.');
     }
 
-    const googleApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
-    if (!googleApiKey) {
-      throw new HttpError(500, 'Missing GOOGLE_MAPS_API_KEY secret.');
+    const openWeatherApiKey = Deno.env.get('OPENWEATHER_API_KEY');
+    if (!openWeatherApiKey) {
+      throw new HttpError(500, '3f982076f04746115142fa8fafef98d4');
     }
 
     const body = (await req.json().catch(() => null)) as
@@ -276,52 +339,50 @@ Deno.serve(async (req) => {
       | null;
 
     const unit: WeatherUnit = body?.unit === 'F' ? 'F' : 'C';
-    const days = Math.min(Math.max(body?.days ?? 5, 1), 7);
+    const days = Math.min(Math.max(body?.days ?? 5, 1), 5);
 
     let location: GeocodingResult;
+    const hasCoordinates = typeof body?.latitude === 'number' && typeof body?.longitude === 'number';
 
-    if (typeof body?.city === 'string' && body.city.trim()) {
-      location = await geocodeCity(body.city.trim(), googleApiKey);
-    } else if (typeof body?.latitude === 'number' && typeof body?.longitude === 'number') {
+    if (hasCoordinates) {
       location = {
-        city: typeof body.city === 'string' && body.city.trim() ? body.city.trim() : 'Selected City',
+        city: typeof body?.city === 'string' && body.city.trim() ? body.city.trim() : 'Selected City',
         placeId: null,
         latitude: body.latitude,
         longitude: body.longitude,
       };
+    } else if (typeof body?.city === 'string' && body.city.trim()) {
+      location = await geocodeCity(body.city.trim(), openWeatherApiKey);
     } else {
       throw new HttpError(400, 'Provide either a city name or latitude/longitude coordinates.');
     }
 
     const [current, forecast] = await Promise.all([
-      fetchCurrentConditions(location.latitude, location.longitude, googleApiKey, unit),
-      fetchDailyForecast(location.latitude, location.longitude, googleApiKey, unit, days),
+      fetchCurrentConditions(location.latitude, location.longitude, openWeatherApiKey, unit),
+      fetchForecast(location.latitude, location.longitude, openWeatherApiKey, unit),
     ]);
 
+    const resolvedCity =
+      typeof body?.city === 'string' && body.city.trim() && hasCoordinates
+        ? body.city.trim()
+        : location.city !== 'Selected City'
+          ? location.city
+          : current.name ?? forecast.city?.name ?? location.city;
+
     return json({
-      city: location.city,
+      city: resolvedCity,
       placeId: location.placeId,
       lat: location.latitude,
       lng: location.longitude,
       current: {
-        temperature: toDegrees(current.temperature),
-        feelsLike: toDegrees(current.feelsLikeTemperature),
-        humidity: typeof current.relativeHumidity === 'number' ? current.relativeHumidity : null,
-        condition: toConditionText(current.weatherCondition),
-        icon: current.weatherCondition?.type ?? null,
-        isDaytime: Boolean(current.isDaytime),
+        temperature: roundNumber(current.main?.temp),
+        feelsLike: roundNumber(current.main?.feels_like),
+        humidity: typeof current.main?.humidity === 'number' ? current.main.humidity : null,
+        condition: toConditionText(current.weather?.[0]),
+        icon: toConditionToken(current.weather?.[0]),
+        isDaytime: isCurrentDaytime(current),
       },
-      daily: (forecast.forecastDays ?? []).map((day) => {
-        const activeCondition = day.daytimeForecast?.weatherCondition ?? day.nighttimeForecast?.weatherCondition;
-
-        return {
-          date: toIsoDate(day.displayDate),
-          min: toDegrees(day.minTemperature),
-          max: toDegrees(day.maxTemperature),
-          condition: toConditionText(activeCondition),
-          icon: activeCondition?.type ?? null,
-        };
-      }),
+      daily: buildDailyForecast(forecast, days),
       fetchedAt: new Date().toISOString(),
     });
   } catch (error) {

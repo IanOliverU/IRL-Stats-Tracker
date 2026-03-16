@@ -183,7 +183,7 @@ async function ensureWeatherBootstrap(userId: string): Promise<{
 }
 
 async function fetchWeather(payload: WeatherFunctionPayload): Promise<WeatherResponse> {
-  const { data, error } = await supabase.functions.invoke<WeatherResponse>(WEATHER_FUNCTION_NAME, {
+  const { data, error, response } = await supabase.functions.invoke<WeatherResponse>(WEATHER_FUNCTION_NAME, {
     body: {
       ...payload,
       days: payload.days ?? 5,
@@ -191,6 +191,31 @@ async function fetchWeather(payload: WeatherFunctionPayload): Promise<WeatherRes
   });
 
   if (error) {
+    if (response) {
+      try {
+        const errorPayload = await response.clone().json();
+        const message =
+          typeof errorPayload?.error === 'string'
+            ? errorPayload.error
+            : typeof errorPayload?.message === 'string'
+              ? errorPayload.message
+              : null;
+
+        if (message) {
+          throw new Error(message);
+        }
+      } catch {
+        try {
+          const text = await response.clone().text();
+          if (text.trim()) {
+            throw new Error(text.trim());
+          }
+        } catch {
+          // Fall back to the original invoke error below.
+        }
+      }
+    }
+
     throw error;
   }
 

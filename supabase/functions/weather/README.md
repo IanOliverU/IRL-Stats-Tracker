@@ -1,20 +1,20 @@
 # Weather Edge Function
 
-This function keeps the Google Weather API key on the server and returns a simplified weather payload for the Expo app.
+This function keeps the OpenWeather API key on the server and returns a simplified weather payload for the Expo app.
 
 Required secrets:
 
-- `GOOGLE_MAPS_API_KEY`
+- `OPENWEATHER_API_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 
 Recommended setup:
 
-1. Enable Google `Weather API` and `Geocoding API` in your Google Cloud project.
-2. Set the Google key in Supabase:
+1. Create an OpenWeather API key.
+2. Set the key in Supabase:
 
 ```bash
-supabase secrets set GOOGLE_MAPS_API_KEY=your-server-key
+supabase secrets set OPENWEATHER_API_KEY=your-server-key
 ```
 
 3. Push the migration and deploy the function:
@@ -24,4 +24,9 @@ supabase db push
 supabase functions deploy weather
 ```
 
-The mobile app calls this function through `supabase.functions.invoke('weather')`.
+Implementation notes:
+
+- City search uses OpenWeather Geocoding API.
+- Current conditions use `data/2.5/weather`.
+- Forecast uses `data/2.5/forecast`.
+- The mobile app still calls this through `supabase.functions.invoke('weather')`.
