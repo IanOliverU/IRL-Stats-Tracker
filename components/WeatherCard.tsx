@@ -8,7 +8,7 @@ import {
 } from '@/lib/weather';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 type WeatherCardProps = {
   colors: ThemeColors;
@@ -77,6 +77,7 @@ export function WeatherCard({
   onRefresh,
   onSetDefault,
 }: WeatherCardProps) {
+  const [showHourly, setShowHourly] = React.useState(false);
   const isSelectedCityDefault = selectedCityId !== null && selectedCityId === defaultCityId;
 
   return (
@@ -233,6 +234,56 @@ export function WeatherCard({
               ))}
             </View>
           ) : null}
+
+          {weather?.hourlyToday?.length ? (
+            <View className="mt-4">
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm font-semibold" style={{ color: colors.text }}>
+                  Later Today
+                </Text>
+                <Pressable
+                  onPress={() => setShowHourly((value) => !value)}
+                  className="rounded-2xl px-3 py-2"
+                  style={({ pressed }) => ({
+                    backgroundColor: colors.inputBg,
+                    borderWidth: 1,
+                    borderColor: colors.inputBorder,
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  <Text className="text-xs font-semibold" style={{ color: colors.text }}>
+                    {showHourly ? 'Hide Hours' : 'View Hours'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              {showHourly ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingTop: 12, paddingRight: 8 }}
+                >
+                  {weather.hourlyToday.map((entry) => (
+                    <View
+                      key={`${entry.timeLabel}-${entry.condition}`}
+                      className="mr-2 w-24 rounded-2xl p-3"
+                      style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder }}
+                    >
+                      <Text className="text-xs font-semibold" style={{ color: colors.textTertiary }}>
+                        {entry.timeLabel}
+                      </Text>
+                      <Text className="mt-2 text-sm font-semibold" style={{ color: colors.text }}>
+                        {renderTemperature(entry.temperature, unit)}
+                      </Text>
+                      <Text className="mt-1 text-xs" numberOfLines={2} style={{ color: colors.textSecondary }}>
+                        {entry.condition}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : null}
+            </View>
+          ) : null}
         </>
       )}
 
@@ -259,7 +310,11 @@ export function WeatherCard({
         </Pressable>
       </View>
 
-      <View className="mt-3 flex-row flex-wrap gap-2">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: 12, paddingRight: 8 }}
+      >
         {cities.map((city) => {
           const selected = city.id === selectedCityId;
 
@@ -267,7 +322,7 @@ export function WeatherCard({
             <Pressable
               key={city.id}
               onPress={() => onSelectCity(city.id)}
-              className="rounded-full px-3 py-2"
+              className="mr-2 rounded-full px-3 py-2"
               style={({ pressed }) => ({
                 backgroundColor: selected ? colors.accent : colors.inputBg,
                 borderWidth: 1,
@@ -291,7 +346,7 @@ export function WeatherCard({
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
 
       {addCityOpen ? (
         <View

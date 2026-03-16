@@ -79,6 +79,13 @@ type DailyAggregate = {
   bestHourDelta: number;
 };
 
+type HourlyForecastEntry = {
+  timeLabel: string;
+  temperature: number | null;
+  condition: string;
+  icon: string | null;
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -176,6 +183,13 @@ function isCurrentDaytime(current: OpenWeatherCurrentResponse): boolean {
   }
 
   return String(current.weather?.[0]?.icon ?? '').endsWith('d');
+}
+
+function formatHourLabel(hour: number): string {
+  const normalizedHour = ((hour % 24) + 24) % 24;
+  const suffix = normalizedHour >= 12 ? 'PM' : 'AM';
+  const displayHour = normalizedHour % 12 === 0 ? 12 : normalizedHour % 12;
+  return `${displayHour} ${suffix}`;
 }
 
 async function geocodeCity(city: string, apiKey: string): Promise<GeocodingResult> {
@@ -313,6 +327,44 @@ function buildDailyForecast(
     }));
 }
 
+function buildHourlyTodayForecast(
+  forecast: OpenWeatherForecastResponse,
+  current: OpenWeatherCurrentResponse
+): HourlyForecastEntry[] {
+  const timezoneOffset =
+    typeof forecast.city?.timezone === 'number'
+      ? forecast.city.timezone
+      : typeof current.timezone === 'number'
+        ? current.timezone
+        : 0;
+
+  const currentTimestamp = typeof current.dt === 'number' ? current.dt : Math.floor(Date.now() / 1000);
+  const currentDate = getLocalDateParts(currentTimestamp, timezoneOffset).date;
+
+  const upcomingToday = (forecast.list ?? [])
+    .filter((entry) => {
+      if (typeof entry.dt !== 'number') {
+        return false;
+      }
+
+      const { date } = getLocalDateParts(entry.dt, timezoneOffset);
+      return entry.dt >= currentTimestamp && date === currentDate;
+    })
+    .slice(0, 5);
+
+  return upcomingToday.map((entry) => {
+    const { hour } = getLocalDateParts(entry.dt ?? currentTimestamp, timezoneOffset);
+    const condition = entry.weather?.[0];
+
+    return {
+      timeLabel: formatHourLabel(hour),
+      temperature: roundNumber(entry.main?.temp),
+      condition: toConditionText(condition),
+      icon: toConditionToken(condition),
+    };
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -325,7 +377,7 @@ Deno.serve(async (req) => {
 
     const openWeatherApiKey = Deno.env.get('OPENWEATHER_API_KEY');
     if (!openWeatherApiKey) {
-      throw new HttpError(500, '3f982076f04746115142fa8fafef98d4');
+      throw new HttpError(500, 'Missing OPENWEATHER_API_KEY secret.');
     }
 
     const body = (await req.json().catch(() => null)) as
@@ -383,6 +435,7 @@ Deno.serve(async (req) => {
         isDaytime: isCurrentDaytime(current),
       },
       daily: buildDailyForecast(forecast, days),
+      hourlyToday: buildHourlyTodayForecast(forecast, current),
       fetchedAt: new Date().toISOString(),
     });
   } catch (error) {

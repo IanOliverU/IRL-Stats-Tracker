@@ -33,6 +33,13 @@ export interface WeatherDailyForecast {
   icon: string | null;
 }
 
+export interface WeatherHourlyForecast {
+  timeLabel: string;
+  temperature: number | null;
+  condition: string;
+  icon: string | null;
+}
+
 export interface WeatherResponse {
   city: string;
   placeId: string | null;
@@ -40,6 +47,7 @@ export interface WeatherResponse {
   lng: number;
   current: WeatherCurrentConditions;
   daily: WeatherDailyForecast[];
+  hourlyToday: WeatherHourlyForecast[];
   fetchedAt: string;
 }
 
