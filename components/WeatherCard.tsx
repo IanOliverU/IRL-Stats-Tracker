@@ -22,12 +22,14 @@ type WeatherCardProps = {
   refreshing: boolean;
   savingCity: boolean;
   settingDefault: boolean;
+  deletingCity: boolean;
   addCityOpen: boolean;
   addCityValue: string;
   onChangeAddCity: (value: string) => void;
   onToggleAddCity: () => void;
   onSubmitAddCity: () => void;
   onSelectCity: (cityId: string) => void;
+  onDeleteSelectedCity: () => void;
   onRefresh: () => void;
   onSetDefault: () => void;
 };
@@ -68,12 +70,14 @@ export function WeatherCard({
   refreshing,
   savingCity,
   settingDefault,
+  deletingCity,
   addCityOpen,
   addCityValue,
   onChangeAddCity,
   onToggleAddCity,
   onSubmitAddCity,
   onSelectCity,
+  onDeleteSelectedCity,
   onRefresh,
   onSetDefault,
 }: WeatherCardProps) {
@@ -342,6 +346,26 @@ export function WeatherCard({
                 <Text className="text-xs font-semibold" style={{ color: selected ? '#ffffff' : colors.text }}>
                   {city.cityName}
                 </Text>
+                {selected && !city.isDefault ? (
+                  <Pressable
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      onDeleteSelectedCity();
+                    }}
+                    disabled={deletingCity}
+                    hitSlop={8}
+                    className="ml-2 h-4 w-4 items-center justify-center rounded-full"
+                    style={{
+                      backgroundColor: selected ? 'rgba(255,255,255,0.18)' : colors.warning + '18',
+                    }}
+                  >
+                    {deletingCity ? (
+                      <ActivityIndicator size="small" color={selected ? '#ffffff' : colors.warning} />
+                    ) : (
+                      <Ionicons name="close" size={11} color={selected ? '#ffffff' : colors.warning} />
+                    )}
+                  </Pressable>
+                ) : null}
               </View>
             </Pressable>
           );

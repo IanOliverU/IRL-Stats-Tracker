@@ -323,12 +323,12 @@ export default function CalendarScreen() {
               {tier.days} days completed
             </Text>
             <Text className="text-sm font-semibold" style={{ color: colors.accent }}>
-              +{tier.bonusXp} XP
+              +{tier.bonusPercent}% of next level XP
             </Text>
           </View>
         ))}
         <Text className="text-xs mt-2" style={{ color: colors.textTertiary }}>
-          Bonus is processed automatically once a new week starts.
+          Bonus scales with your next level and is processed automatically once a new week starts.
         </Text>
       </View>
     </ScrollView>

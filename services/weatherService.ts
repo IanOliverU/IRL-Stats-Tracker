@@ -398,3 +398,31 @@ export async function setDefaultWeatherCity(userId: string, cityId: string): Pro
 
   return buildDashboardState(userId);
 }
+
+export async function deleteWeatherCity(userId: string, cityId: string): Promise<WeatherDashboardState> {
+  const { cities, settings } = await ensureWeatherBootstrap(userId);
+  const city = cities.find((entry) => entry.id === cityId);
+
+  if (!city) {
+    throw new Error('City could not be found.');
+  }
+
+  if (city.isDefault || settings.defaultCityId === cityId) {
+    throw new Error('Default city cannot be removed.');
+  }
+
+  const { error } = await supabase.from('weather_saved_cities').delete().eq('user_id', userId).eq('id', cityId);
+
+  if (error) {
+    throw error;
+  }
+
+  const nextSelectedCityId = settings.selectedCityId === cityId ? settings.defaultCityId : settings.selectedCityId;
+
+  await upsertWeatherSettings(userId, {
+    ...settings,
+    selectedCityId: nextSelectedCityId,
+  });
+
+  return buildDashboardState(userId);
+}

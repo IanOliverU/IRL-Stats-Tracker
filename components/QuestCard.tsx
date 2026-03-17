@@ -1,5 +1,5 @@
 import type { Habit } from '@/models';
-import { STAT_LABELS } from '@/models';
+import { STAT_LABELS, normalizeHabitXpReward } from '@/models';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -22,6 +22,7 @@ export function QuestCard({
   onLongPress,
 }: QuestCardProps) {
   const colors = useAppColors();
+  const displayXpReward = normalizeHabitXpReward(habit.xpReward);
 
   const handlePress = useCallback(() => {
     if (completedToday) return;
@@ -79,7 +80,7 @@ export function QuestCard({
           <View className="flex-row items-center">
             <Ionicons name="star-outline" size={14} color={colors.textSecondary} />
             <Text className="text-xs ml-1" style={{ color: colors.textSecondary }}>
-              {habit.xpReward} XP
+              {displayXpReward} XP
             </Text>
           </View>
           <Text className="text-xs capitalize" style={{ color: colors.textTertiary }}>

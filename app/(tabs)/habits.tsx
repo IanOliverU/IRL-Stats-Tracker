@@ -8,11 +8,15 @@ import { useGameHydration } from '@/hooks/useGameHydration';
 import { getModalBackdropColor } from '@/lib/modalBackdrop';
 import type { Difficulty, HabitFrequency, StatType } from '@/models';
 import {
+  DEFAULT_HABIT_XP_REWARD,
   DIFFICULTY_COLORS,
   DIFFICULTY_LABELS,
   DIFFICULTY_XP,
+  MAX_HABIT_XP_REWARD,
   MAX_CUSTOM_QUESTS_PER_DAY,
+  MIN_HABIT_XP_REWARD,
   STAT_LABELS,
+  normalizeHabitXpReward,
 } from '@/models';
 import type { QuestCompletionFeedback as QuestCompletionFeedbackData } from '@/services/habitService';
 import { useGameStore } from '@/store/useGameStore';
@@ -74,7 +78,7 @@ export default function HabitsScreen() {
   const [habitModalVisible, setHabitModalVisible] = useState(false);
   const [title, setTitle] = useState('');
   const [statReward, setStatReward] = useState<StatType>('STR');
-  const [xpReward, setXpReward] = useState('40');
+  const [xpReward, setXpReward] = useState(String(DEFAULT_HABIT_XP_REWARD));
   const [frequency, setFrequency] = useState<HabitFrequency>('daily');
 
   // Custom quest modal state
@@ -90,13 +94,13 @@ export default function HabitsScreen() {
     const t = title.trim();
     const xp = parseInt(xpReward, 10);
     if (!t) return;
-    if (isNaN(xp) || xp < 1 || xp > 999) {
-      Alert.alert('Invalid XP', 'Enter 1–999');
+    if (isNaN(xp) || xp < MIN_HABIT_XP_REWARD || xp > MAX_HABIT_XP_REWARD) {
+      Alert.alert('Invalid XP', `Enter ${MIN_HABIT_XP_REWARD}-${MAX_HABIT_XP_REWARD}`);
       return;
     }
-    addHabit({ title: t, statReward, xpReward: xp, frequency });
+    addHabit({ title: t, statReward, xpReward: normalizeHabitXpReward(xp), frequency });
     setTitle('');
-    setXpReward('40');
+    setXpReward(String(DEFAULT_HABIT_XP_REWARD));
     setStatReward('STR');
     setFrequency('daily');
     setHabitModalVisible(false);
@@ -221,12 +225,16 @@ export default function HabitsScreen() {
               onPress={() => setHabitModalVisible(true)}
               className="flex-row items-center px-3.5 py-2.5 rounded-xl"
               style={({ pressed }) => ({
-                backgroundColor: colors.accent,
+                backgroundColor: isDarkTheme ? colors.accent : 'transparent',
+                borderWidth: isDarkTheme ? 0 : 1,
+                borderColor: colors.accent,
                 opacity: pressed ? 0.85 : 1,
               })}
             >
-              <Ionicons name="add" size={16} color="#fff" />
-              <Text className="text-xs font-semibold text-white ml-1">Habit</Text>
+              <Ionicons name="add" size={16} color={isDarkTheme ? '#fff' : colors.accent} />
+              <Text className="text-xs font-semibold ml-1" style={{ color: isDarkTheme ? '#ffffff' : colors.accent }}>
+                Habit
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -437,7 +445,7 @@ export default function HabitsScreen() {
             </View>
 
             <Text className="text-sm font-medium mb-2" style={{ color: colors.textSecondary }}>
-              XP reward
+              XP reward ({MIN_HABIT_XP_REWARD}-{MAX_HABIT_XP_REWARD})
             </Text>
             <TextInput
               className="rounded-xl px-4 py-3 text-base mb-3"
@@ -447,7 +455,7 @@ export default function HabitsScreen() {
                 borderWidth: 1,
                 borderColor: colors.inputBorder,
               }}
-              placeholder="40"
+              placeholder={String(DEFAULT_HABIT_XP_REWARD)}
               placeholderTextColor={colors.textTertiary}
               keyboardType="number-pad"
               value={xpReward}

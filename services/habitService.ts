@@ -4,6 +4,7 @@ import {
   getItemDefinitionById,
   MAX_CUSTOM_QUESTS_PER_DAY,
   MAX_CUSTOM_XP_PER_STAT_PER_DAY,
+  normalizeHabitXpReward,
   totalXpForLevel,
   xpRequiredForLevel,
 } from '@/models';
@@ -23,8 +24,8 @@ import {
   dbUpdateUser,
 } from './database';
 
-const STREAK_BONUS_PER_DAY = 5;
-const MAX_STREAK_BONUS = 25;
+const STREAK_BONUS_PER_DAY = 3;
+const MAX_STREAK_BONUS = 15;
 
 export interface QuestCompletionFeedback {
   stat: StatType;
@@ -127,6 +128,8 @@ interface ItemXpBonusResult {
   consumeOnUseItemIds: string[];
 }
 
+const MAX_ITEM_XP_BONUS_MULTIPLIER = 1;
+
 function calculateItemXpBonus(params: {
   baseXp: number;
   stat: StatType;
@@ -179,7 +182,9 @@ function calculateItemXpBonus(params: {
   }
 
   const percentXp = Math.floor((params.baseXp * percentBonus) / 100);
-  return { bonusXp: percentXp + flatBonus, consumeOnUseItemIds };
+  const totalBonusXp = percentXp + flatBonus;
+  const cappedBonusXp = Math.min(totalBonusXp, Math.floor(params.baseXp * MAX_ITEM_XP_BONUS_MULTIPLIER));
+  return { bonusXp: cappedBonusXp, consumeOnUseItemIds };
 }
 
 function applyLevelAndXp(currentUser: User, xpToAdd: number): User | null {
@@ -289,19 +294,20 @@ export function completeHabit(habitId: string, habit: Habit): HabitCompletionRes
   const user = dbGetUser();
   if (!user) return null;
 
+  const baseHabitXp = normalizeHabitXpReward(habit.xpReward);
   const prevStreak = getStreakForHabit(habitId);
   const nextStreak = prevStreak + 1;
   const bonusXp = getStreakBonusXp(nextStreak);
   const now = new Date();
   const completedStatQuestCountToday = dbGetCompletedQuestCountForStatToday(habit.statReward);
   const itemXpBonus = calculateItemXpBonus({
-    baseXp: habit.xpReward,
+    baseXp: baseHabitXp,
     stat: habit.statReward,
     source: 'habit',
     completedAt: now,
     completedStatQuestCountToday,
   });
-  const questXpGained = habit.xpReward + itemXpBonus.bonusXp;
+  const questXpGained = baseHabitXp + itemXpBonus.bonusXp;
 
   const completedAt = now.toISOString();
   dbInsertHabitLog({

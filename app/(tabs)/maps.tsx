@@ -3,6 +3,7 @@ import {
   formatMapPace,
   getMapActivityLabel,
   getMapSessionDifficulty,
+  getMapSessionQuestXpReward,
   getMapSessionTitle,
   MAP_SESSION_XP_BONUS_LABELS,
   MAP_SESSION_XP_MULTIPLIERS,
@@ -11,13 +12,12 @@ import {
 import {
   DIFFICULTY_COLORS,
   DIFFICULTY_LABELS,
-  DIFFICULTY_XP,
   MAX_CUSTOM_QUESTS_PER_DAY,
   type Difficulty,
   type MapActivityType,
 } from '@/models';
 import { useGameStore } from '@/store/useGameStore';
-import { useAppColors } from '@/store/useThemeStore';
+import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
@@ -67,6 +67,7 @@ function haversineDistanceMeters(from: LatLng, to: LatLng): number {
 
 export default function MapsScreen() {
   const colors = useAppColors();
+  const isDarkTheme = useIsDarkTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const addMapActivitySession = useGameStore((state) => state.addMapActivitySession);
@@ -549,7 +550,7 @@ export default function MapsScreen() {
         updateCustomQuest(activeCustomQuestId, {
           title: finalQuestTitle,
           difficulty,
-          xpReward: DIFFICULTY_XP[difficulty],
+          xpReward: getMapSessionQuestXpReward(difficulty),
           activityType: session.activityType,
           linkedMapSessionId: session.id,
           distanceMeters: session.distanceMeters,
@@ -640,14 +641,14 @@ export default function MapsScreen() {
           styles.historyButton,
           {
             top: Math.max(insets.top + 10, 18),
-            backgroundColor: 'rgba(15, 23, 42, 0.92)',
-            borderColor: '#22c55e',
+            backgroundColor: isDarkTheme ? colors.card + 'F2' : colors.card + 'EB',
+            borderColor: isDarkTheme ? colors.cardBorder + 'DD' : colors.cardBorder,
             opacity: pressed ? 0.88 : 1,
           },
         ]}
         accessibilityLabel="Open activity history"
       >
-        <Ionicons name="time-outline" size={22} color="#ffffff" />
+        <Ionicons name="time-outline" size={20} color={colors.text} />
       </Pressable>
 
       <View style={[styles.bottomDock, { paddingBottom: Math.max(16, insets.bottom) }]}>
@@ -851,17 +852,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
     zIndex: 5,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000000',
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 7,
   },
   bottomDock: {
     position: 'absolute',

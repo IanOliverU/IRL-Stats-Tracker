@@ -1,7 +1,7 @@
 import { LevelUpModal } from '@/components/LevelUpModal';
 import { QuestCompletionFeedback } from '@/components/QuestCompletionFeedback';
 import { useGameHydration } from '@/hooks/useGameHydration';
-import { DIFFICULTY_LABELS } from '@/models';
+import { DIFFICULTY_LABELS, normalizeHabitXpReward } from '@/models';
 import type { QuestCompletionFeedback as QuestCompletionFeedbackData } from '@/services/habitService';
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors } from '@/store/useThemeStore';
@@ -151,7 +151,7 @@ export default function QuestDetailScreen() {
                 Stat Reward: {habit.statReward}
               </Text>
               <Text className="text-sm mb-1" style={{ color: colors.textSecondary }}>
-                Base XP: {habit.xpReward}
+                Base XP: {normalizeHabitXpReward(habit.xpReward)}
               </Text>
               <Text className="text-sm mb-1 capitalize" style={{ color: colors.textSecondary }}>
                 Frequency: {habit.frequency}

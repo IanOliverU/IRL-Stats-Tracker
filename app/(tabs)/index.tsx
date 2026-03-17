@@ -8,9 +8,10 @@ import {
   getProgressSnapshot,
 } from '@/lib/progression';
 import type { StatType } from '@/models';
-import { STAT_LABELS, totalXpForLevel, xpRequiredForLevel } from '@/models';
+import { STAT_LABELS, normalizeHabitXpReward, totalXpForLevel, xpRequiredForLevel } from '@/models';
 import {
   addWeatherCity,
+  deleteWeatherCity,
   loadWeatherDashboard,
   refreshWeatherDashboard,
   selectWeatherCity,
@@ -18,7 +19,7 @@ import {
 } from '@/services/weatherService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
-import { useAppColors } from '@/store/useThemeStore';
+import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -55,6 +56,7 @@ export default function WelcomeScreen() {
   const hydrated = useGameHydration();
   const router = useRouter();
   const colors = useAppColors();
+  const isDarkTheme = useIsDarkTheme();
   const authUser = useAuthStore((s) => s.user);
   const authUserId = authUser?.id ?? null;
 
@@ -79,6 +81,7 @@ export default function WelcomeScreen() {
   const [weatherRefreshing, setWeatherRefreshing] = useState(false);
   const [savingWeatherCity, setSavingWeatherCity] = useState(false);
   const [settingDefaultCity, setSettingDefaultCity] = useState(false);
+  const [deletingWeatherCity, setDeletingWeatherCity] = useState(false);
   const [showAddCityInput, setShowAddCityInput] = useState(false);
   const [cityInput, setCityInput] = useState('');
 
@@ -203,6 +206,20 @@ export default function WelcomeScreen() {
     }
   }
 
+  async function handleDeleteSelectedCity() {
+    if (!authUserId || !weatherSettings.selectedCityId) return;
+
+    setDeletingWeatherCity(true);
+    try {
+      const state = await deleteWeatherCity(authUserId, weatherSettings.selectedCityId);
+      applyWeatherState(state);
+    } catch (error) {
+      setWeatherError(error instanceof Error ? error.message : 'Unable to remove the city.');
+    } finally {
+      setDeletingWeatherCity(false);
+    }
+  }
+
   const effectiveStats = useMemo<Record<StatType, number>>(() => {
     const bonusByStat: Record<StatType, number> = { STR: 0, INT: 0, WIS: 0, CHA: 0, VIT: 0 };
     for (const item of items) {
@@ -258,8 +275,8 @@ export default function WelcomeScreen() {
       ...pendingHabitsToday.map((habit) => ({
         id: habit.id,
         title: habit.title,
-        subtitle: `Habit - +${habit.xpReward} ${habit.statReward} XP`,
-        xpReward: habit.xpReward,
+        subtitle: `Habit - +${normalizeHabitXpReward(habit.xpReward)} ${habit.statReward} XP`,
+        xpReward: normalizeHabitXpReward(habit.xpReward),
       })),
     ].sort((a, b) => b.xpReward - a.xpReward);
 
@@ -361,12 +378,14 @@ export default function WelcomeScreen() {
         refreshing={weatherRefreshing}
         savingCity={savingWeatherCity}
         settingDefault={settingDefaultCity}
+        deletingCity={deletingWeatherCity}
         addCityOpen={showAddCityInput}
         addCityValue={cityInput}
         onChangeAddCity={setCityInput}
         onToggleAddCity={() => setShowAddCityInput((current) => !current)}
         onSubmitAddCity={() => void handleAddCity()}
         onSelectCity={(cityId) => void handleSelectCity(cityId)}
+        onDeleteSelectedCity={() => void handleDeleteSelectedCity()}
         onRefresh={() => void handleRefreshWeather()}
         onSetDefault={() => void handleSetDefaultCity()}
       />
@@ -635,11 +654,15 @@ export default function WelcomeScreen() {
           onPress={() => router.push('/(tabs)/habits')}
           className="flex-1 items-center rounded-2xl py-3.5"
           style={({ pressed }) => ({
-            backgroundColor: colors.accent,
+            backgroundColor: isDarkTheme ? colors.accent : colors.inputBg,
+            borderWidth: isDarkTheme ? 0 : 1,
+            borderColor: isDarkTheme ? 'transparent' : colors.inputBorder,
             opacity: pressed ? 0.85 : 1,
           })}
         >
-          <Text className="text-sm font-semibold text-white">Start Quest</Text>
+          <Text className="text-sm font-semibold" style={{ color: isDarkTheme ? '#ffffff' : colors.text }}>
+            Start Quest
+          </Text>
         </Pressable>
         <Pressable
           onPress={() => router.push('/(tabs)/dashboard')}

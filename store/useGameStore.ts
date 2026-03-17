@@ -11,7 +11,7 @@ import type {
   StatType,
   User,
 } from '@/models';
-import { DIFFICULTY_XP, totalXpForLevel, xpRequiredForLevel } from '@/models';
+import { DIFFICULTY_XP, normalizeHabitXpReward, totalXpForLevel, xpRequiredForLevel } from '@/models';
 import { checkAndUnlockAchievements, getAchievementStatuses } from '@/services/achievementService';
 import {
   getCompletedDayKeysForMonth,
@@ -39,6 +39,7 @@ import {
   dbGetTodayCustomQuests,
   dbGetTotalMissionXp,
   dbGetUser,
+  dbNormalizeHabitRewards,
   dbResetAllData,
   dbUpdateCustomQuest,
   dbUpdateUserName,
@@ -138,6 +139,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   hydrate: () => {
     try {
       getDb();
+      dbNormalizeHabitRewards();
       processPendingWeeklyBonus();
       const itemUnlocks = syncItemUnlocks();
       const user = dbGetUser();
@@ -204,7 +206,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       id,
       title: payload.title,
       statReward: payload.statReward,
-      xpReward: payload.xpReward,
+      xpReward: normalizeHabitXpReward(payload.xpReward),
       frequency: payload.frequency,
     });
     const newlyUnlockedAchievements = checkAndUnlockAchievements();

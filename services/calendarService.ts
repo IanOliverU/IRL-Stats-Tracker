@@ -89,6 +89,25 @@ function getWeekBoundsIso(weekStartKey: string): { startIso: string; endIso: str
   return { startIso, endIso, weekEndKey: formatDateKeyUtc(weekEndDate) };
 }
 
+function getResolvedWeeklyBonusXp(weekStartKey: string, completedDays: number): number {
+  const processedKey = `weekly_bonus_processed_${weekStartKey}`;
+  const storedRaw = dbGetSetting(processedKey);
+
+  if (storedRaw) {
+    try {
+      const stored = JSON.parse(storedRaw) as { bonusXp?: number };
+      if (typeof stored.bonusXp === 'number' && Number.isFinite(stored.bonusXp)) {
+        return stored.bonusXp;
+      }
+    } catch {
+      // Fall back to a live preview if the stored payload is malformed.
+    }
+  }
+
+  const user = dbGetUser();
+  return weeklyBonusForCompletedDays(completedDays, user?.level ?? 1);
+}
+
 function getCurrentStreakWithinWeek(
   completedDaySet: Set<string>,
   weekStartDate: Date,
@@ -183,7 +202,7 @@ export function getWeekCompletionSummary(
     completedDays,
     consistencyPercent: Math.round((completedDays / DAYS_PER_WEEK) * 100),
     currentStreak,
-    bonusXp: weeklyBonusForCompletedDays(completedDays),
+    bonusXp: getResolvedWeeklyBonusXp(weekStartKey, completedDays),
     dayKeys,
   };
 }

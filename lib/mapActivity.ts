@@ -1,4 +1,4 @@
-import type { Difficulty, MapActivitySession, MapActivityType, MapCoordinate } from '@/models';
+import { DIFFICULTY_XP, type Difficulty, type MapActivitySession, type MapActivityType, type MapCoordinate } from '@/models';
 import type { Region } from 'react-native-maps';
 
 export const MAP_SESSION_DIFFICULTY_THRESHOLDS_KM = {
@@ -17,6 +17,10 @@ export const MAP_SESSION_XP_BONUS_LABELS: Record<Difficulty, string> = {
   medium: '+25% bonus XP',
   hard: '+50% bonus XP',
 };
+
+export function getMapSessionQuestXpReward(difficulty: Difficulty): number {
+  return Math.round(DIFFICULTY_XP[difficulty] * MAP_SESSION_XP_MULTIPLIERS[difficulty]);
+}
 
 export function getMapSessionDifficulty(distanceKm: number): Difficulty {
   const safeDistanceKm = Math.max(0, distanceKm);

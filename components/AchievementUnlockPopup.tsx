@@ -1,4 +1,5 @@
 import type { AchievementStatus } from '@/models';
+import { triggerAchievementUnlockHaptic } from '@/lib/feedback';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
@@ -15,26 +16,31 @@ export function AchievementUnlockPopup({ achievement, onHide }: AchievementUnloc
   const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-10)).current;
+  const scale = useRef(new Animated.Value(0.96)).current;
 
   useEffect(() => {
     if (!achievement) return;
     opacity.setValue(0);
     translateY.setValue(-10);
+    scale.setValue(0.96);
+    void triggerAchievementUnlockHaptic();
 
     Animated.parallel([
       Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
       Animated.timing(translateY, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, friction: 8, tension: 120, useNativeDriver: true }),
     ]).start();
 
     const timer = setTimeout(() => {
       Animated.parallel([
         Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }),
         Animated.timing(translateY, { toValue: -6, duration: 220, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 0.98, duration: 220, useNativeDriver: true }),
       ]).start(onHide);
     }, 2300);
 
     return () => clearTimeout(timer);
-  }, [achievement, onHide, opacity, translateY]);
+  }, [achievement, onHide, opacity, scale, translateY]);
 
   if (!achievement) return null;
 
@@ -47,7 +53,7 @@ export function AchievementUnlockPopup({ achievement, onHide }: AchievementUnloc
         className="rounded-2xl px-4 py-3"
         style={{
           opacity,
-          transform: [{ translateY }],
+          transform: [{ translateY }, { scale }],
           backgroundColor: colors.card,
           borderWidth: 1,
           borderColor: colors.warning + '66',

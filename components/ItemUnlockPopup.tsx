@@ -1,4 +1,5 @@
 import { getItemDefinitionById, getItemRarityById, type ItemRarity } from '@/models';
+import { triggerRewardUnlockHaptic } from '@/lib/feedback';
 import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
@@ -17,27 +18,32 @@ export function ItemUnlockPopup({ itemId, onHide }: ItemUnlockPopupProps) {
   const rarity = itemId ? getItemRarityById(itemId) : null;
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-12)).current;
+  const scale = useRef(new Animated.Value(0.96)).current;
 
   useEffect(() => {
     if (!item) return;
 
     opacity.setValue(0);
     translateY.setValue(-12);
+    scale.setValue(0.96);
+    void triggerRewardUnlockHaptic();
 
     Animated.parallel([
       Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
       Animated.timing(translateY, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, friction: 8, tension: 120, useNativeDriver: true }),
     ]).start();
 
     const timer = setTimeout(() => {
       Animated.parallel([
         Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }),
         Animated.timing(translateY, { toValue: -6, duration: 220, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 0.98, duration: 220, useNativeDriver: true }),
       ]).start(onHide);
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, [item, onHide, opacity, translateY]);
+  }, [item, onHide, opacity, scale, translateY]);
 
   if (!item) return null;
 
@@ -52,7 +58,7 @@ export function ItemUnlockPopup({ itemId, onHide }: ItemUnlockPopupProps) {
         className="rounded-2xl px-4 py-3"
         style={{
           opacity,
-          transform: [{ translateY }],
+          transform: [{ translateY }, { scale }],
           backgroundColor: colors.card,
           borderWidth: 1,
           borderColor: colors.accent + '66',

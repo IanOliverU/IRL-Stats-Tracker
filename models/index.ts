@@ -1288,10 +1288,18 @@ export interface CustomQuest {
   distanceMeters: number;
 }
 
+export const MIN_HABIT_XP_REWARD = 10;
+export const MAX_HABIT_XP_REWARD = 25;
+export const DEFAULT_HABIT_XP_REWARD = 20;
+
+export function normalizeHabitXpReward(xpReward: number): number {
+  return Math.min(MAX_HABIT_XP_REWARD, Math.max(MIN_HABIT_XP_REWARD, Math.round(xpReward)));
+}
+
 export const DIFFICULTY_XP: Record<Difficulty, number> = {
-  easy: 20,
-  medium: 40,
-  hard: 60,
+  easy: 25,
+  medium: 50,
+  hard: 80,
 };
 
 export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
@@ -1310,20 +1318,13 @@ export const DIFFICULTY_COLORS: Record<Difficulty, string> = {
 export const MAX_CUSTOM_QUESTS_PER_DAY = 3;
 
 /** Max XP a user can earn per stat per day from custom quests */
-export const MAX_CUSTOM_XP_PER_STAT_PER_DAY = 100;
+export const MAX_CUSTOM_XP_PER_STAT_PER_DAY = 200;
 
 export const WEEKLY_COMPLETION_BONUSES = [
-  { days: 7, bonusXp: 100 },
-  { days: 5, bonusXp: 50 },
-  { days: 3, bonusXp: 20 },
+  { days: 7, bonusPercent: 5 },
+  { days: 5, bonusPercent: 3 },
+  { days: 3, bonusPercent: 2 },
 ] as const;
-
-export function weeklyBonusForCompletedDays(completedDays: number): number {
-  for (const tier of WEEKLY_COMPLETION_BONUSES) {
-    if (completedDays >= tier.days) return tier.bonusXp;
-  }
-  return 0;
-}
 
 export const STAT_LABELS: Record<StatType, string> = {
   STR: 'Strength',
@@ -1344,6 +1345,19 @@ export const STAT_DESCRIPTIONS: Record<StatType, string> = {
 /** XP required for next level = 100 * level^1.5 */
 export function xpRequiredForLevel(level: number): number {
   return Math.floor(100 * Math.pow(level, 1.5));
+}
+
+export function getWeeklyCompletionBonusTier(completedDays: number) {
+  for (const tier of WEEKLY_COMPLETION_BONUSES) {
+    if (completedDays >= tier.days) return tier;
+  }
+  return null;
+}
+
+export function weeklyBonusForCompletedDays(completedDays: number, level: number): number {
+  const tier = getWeeklyCompletionBonusTier(completedDays);
+  if (!tier) return 0;
+  return Math.floor((xpRequiredForLevel(level) * tier.bonusPercent) / 100);
 }
 
 /** Total XP needed from level 1 to reach a given level */

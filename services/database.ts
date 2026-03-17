@@ -1,5 +1,6 @@
 import {
   ITEM_DEFINITIONS,
+  normalizeHabitXpReward,
   type AchievementId,
   type CustomQuest,
   type Habit,
@@ -168,11 +169,11 @@ function initSchema(database: SQLite.SQLiteDatabase) {
   if (habitRow && habitRow.count === 0) {
     const now = new Date().toISOString();
     const defaults = [
-      ['gym', 'Gym', 'STR', 50, 'daily', now, now],
-      ['coding', 'Coding', 'INT', 40, 'daily', now, now],
-      ['reading', 'Reading', 'WIS', 30, 'daily', now, now],
-      ['social', 'Social', 'CHA', 35, 'weekly', now, now],
-      ['sleep', 'Sleep well', 'VIT', 25, 'daily', now, now],
+      ['gym', 'Gym', 'STR', 25, 'daily', now, now],
+      ['coding', 'Coding', 'INT', 25, 'daily', now, now],
+      ['reading', 'Reading', 'WIS', 20, 'daily', now, now],
+      ['social', 'Social', 'CHA', 25, 'weekly', now, now],
+      ['sleep', 'Sleep well', 'VIT', 20, 'daily', now, now],
     ];
     for (const row of defaults) {
       database.runSync(
@@ -261,12 +262,29 @@ export function dbCreateHabit(habit: Omit<Habit, 'createdAt' | 'updatedAt'>): vo
       habit.id,
       habit.title,
       habit.statReward,
-      habit.xpReward,
+      normalizeHabitXpReward(habit.xpReward),
       habit.frequency,
       now,
       now,
     ]
   );
+}
+
+export function dbNormalizeHabitRewards(): void {
+  const database = getDb();
+  const habits = database.getAllSync<Pick<Habit, 'id' | 'xpReward'>>('SELECT id, xpReward FROM habit');
+  const now = new Date().toISOString();
+
+  for (const habit of habits ?? []) {
+    const normalizedXp = normalizeHabitXpReward(habit.xpReward);
+    if (normalizedXp === habit.xpReward) continue;
+
+    database.runSync('UPDATE habit SET xpReward = ?, updatedAt = ? WHERE id = ?', [
+      normalizedXp,
+      now,
+      habit.id,
+    ]);
+  }
 }
 
 export function dbDeleteHabit(id: string): void {
@@ -599,11 +617,11 @@ export function dbResetAllData(): void {
 
   // Re-seed default habits
   const defaults = [
-    ['gym', 'Gym', 'STR', 50, 'daily', now, now],
-    ['coding', 'Coding', 'INT', 40, 'daily', now, now],
-    ['reading', 'Reading', 'WIS', 30, 'daily', now, now],
-    ['social', 'Social', 'CHA', 35, 'weekly', now, now],
-    ['sleep', 'Sleep well', 'VIT', 25, 'daily', now, now],
+    ['gym', 'Gym', 'STR', 25, 'daily', now, now],
+    ['coding', 'Coding', 'INT', 25, 'daily', now, now],
+    ['reading', 'Reading', 'WIS', 20, 'daily', now, now],
+    ['social', 'Social', 'CHA', 25, 'weekly', now, now],
+    ['sleep', 'Sleep well', 'VIT', 20, 'daily', now, now],
   ];
   for (const row of defaults) {
     database.runSync(
