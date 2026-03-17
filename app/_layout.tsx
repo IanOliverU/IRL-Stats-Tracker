@@ -10,6 +10,7 @@ import 'react-native-reanimated';
 import { useGameStore } from '@/store/useGameStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useThemeStore } from '@/store/useThemeStore';
+import { configureNotificationPresentationAsync, initializeNotificationsAsync } from '@/services/notificationService';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -64,6 +65,11 @@ export default function RootLayout() {
     if (Platform.OS === 'android') {
       StatusBar.setTranslucent(true);
     }
+  }, []);
+
+  useEffect(() => {
+    void configureNotificationPresentationAsync();
+    void initializeNotificationsAsync();
   }, []);
 
   return (

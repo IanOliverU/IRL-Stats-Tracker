@@ -16,6 +16,8 @@ import {
   type Difficulty,
   type MapActivityType,
 } from '@/models';
+import { isRunningInExpoGo } from 'expo';
+import { notifyTrackingCompletedAsync, notifyTrackingStartedAsync } from '@/services/notificationService';
 import { useGameStore } from '@/store/useGameStore';
 import { useAppColors, useIsDarkTheme } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +35,10 @@ type CompletedSessionSummary = {
   distanceMeters: number;
   elapsedMs: number;
   xpMultiplier: number;
+};
+type TrackerBanner = {
+  title: string;
+  body: string;
 };
 
 const DEFAULT_REGION: Region = {
@@ -99,7 +105,9 @@ export default function MapsScreen() {
   const [clockNow, setClockNow] = useState(Date.now());
   const [completedSession, setCompletedSession] = useState<CompletedSessionSummary | null>(null);
   const [summaryCountdownMs, setSummaryCountdownMs] = useState(SUMMARY_MODAL_DURATION_MS);
+  const [trackerBanner, setTrackerBanner] = useState<TrackerBanner | null>(null);
   const summaryCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trackerBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const summaryClosingRef = useRef(false);
   const summaryOverlayOpacity = useRef(new Animated.Value(0)).current;
   const summaryCardOpacity = useRef(new Animated.Value(0)).current;
@@ -257,6 +265,27 @@ export default function MapsScreen() {
       summaryProgress.stopAnimation();
     };
   }, [clearSummaryCountdownInterval, summaryProgress]);
+
+  const showTrackerBanner = useCallback((title: string, body: string) => {
+    setTrackerBanner({ title, body });
+
+    if (trackerBannerTimeoutRef.current) {
+      clearTimeout(trackerBannerTimeoutRef.current);
+    }
+
+    trackerBannerTimeoutRef.current = setTimeout(() => {
+      setTrackerBanner(null);
+      trackerBannerTimeoutRef.current = null;
+    }, 4500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (trackerBannerTimeoutRef.current) {
+        clearTimeout(trackerBannerTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!completedSession) {
@@ -459,6 +488,15 @@ export default function MapsScreen() {
       setClockNow(startedAt);
       setTrackingStatus('running');
       if (trackingStatus === 'stopped') {
+        if (isRunningInExpoGo()) {
+          showTrackerBanner(
+            `${getMapActivityLabel(activityMode)} started`,
+            'Expo Go cannot show Android system notifications here. Use a development build to test the real phone alert.'
+          );
+        } else {
+          void notifyTrackingStartedAsync(activityMode);
+        }
+
         if (getCustomQuestsCompletedToday() < MAX_CUSTOM_QUESTS_PER_DAY) {
           const quest = addCustomQuest({
             title: `${getMapActivityLabel(activityMode)} Session`,
@@ -489,6 +527,7 @@ export default function MapsScreen() {
     centerMapOnCoordinate,
     ensureForegroundPermission,
     getCustomQuestsCompletedToday,
+    showTrackerBanner,
     stopLocationWatcher,
     trackingStatus,
   ]);
@@ -540,6 +579,18 @@ export default function MapsScreen() {
         elapsedMs: session.elapsedMs,
         xpMultiplier: session.xpMultiplier,
       });
+      if (isRunningInExpoGo()) {
+        showTrackerBanner(
+          `${getMapActivityLabel(session.activityType)} saved`,
+          `${(session.distanceMeters / 1000).toFixed(2)} km in ${formatMapDuration(session.elapsedMs)}. Build the app to get the real phone notification.`
+        );
+      } else {
+        void notifyTrackingCompletedAsync({
+          activityType: session.activityType,
+          distanceMeters: session.distanceMeters,
+          elapsedMs: session.elapsedMs,
+        });
+      }
 
       if (activeCustomQuestId) {
         const finalQuestTitle = getMapSessionTitle({
@@ -580,6 +631,7 @@ export default function MapsScreen() {
     distanceMeters,
     elapsedBeforeRunMs,
     routeCoordinates,
+    showTrackerBanner,
     stopLocationWatcher,
     trackingStatus,
     updateCustomQuest,
@@ -635,21 +687,26 @@ export default function MapsScreen() {
         </View>
       )}
 
-      <Pressable
-        onPress={() => router.push('/maps/history')}
-        style={({ pressed }) => [
-          styles.historyButton,
-          {
-            top: Math.max(insets.top + 10, 18),
-            backgroundColor: isDarkTheme ? colors.card + 'F2' : colors.card + 'EB',
-            borderColor: isDarkTheme ? colors.cardBorder + 'DD' : colors.cardBorder,
-            opacity: pressed ? 0.88 : 1,
-          },
-        ]}
-        accessibilityLabel="Open activity history"
-      >
-        <Ionicons name="time-outline" size={20} color={colors.text} />
-      </Pressable>
+      {trackerBanner ? (
+        <View
+          style={[
+            styles.trackerBanner,
+            {
+              top: Math.max(insets.top + 56, 72),
+              backgroundColor: isDarkTheme ? colors.card + 'F2' : colors.card + 'EB',
+              borderColor: colors.cardBorder,
+            },
+          ]}
+        >
+          <View style={[styles.trackerBannerIcon, { backgroundColor: colors.accentMuted }]}>
+            <Ionicons name="notifications-outline" size={18} color={colors.accent} />
+          </View>
+          <View style={styles.trackerBannerContent}>
+            <Text style={[styles.trackerBannerTitle, { color: colors.text }]}>{trackerBanner.title}</Text>
+            <Text style={[styles.trackerBannerBody, { color: colors.textSecondary }]}>{trackerBanner.body}</Text>
+          </View>
+        </View>
+      ) : null}
 
       <View style={[styles.bottomDock, { paddingBottom: Math.max(16, insets.bottom) }]}>
         <View style={[styles.trackerCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -658,7 +715,36 @@ export default function MapsScreen() {
               {!gpsReady && <Ionicons name="warning-outline" size={22} color="#ff5a5a" />}
               <Text style={[styles.trackerTitleText, { color: gpsReady ? colors.text : '#ff5a5a' }]}>{panelTitle}</Text>
             </View>
-            <Ionicons name="expand-outline" size={26} color={colors.text} />
+            <View style={styles.trackerHeaderActions}>
+              <Pressable
+                onPress={() => router.push('/maps/history')}
+                style={({ pressed }) => [styles.headerIconTouchTarget, { opacity: pressed ? 0.88 : 1 }]}
+                accessibilityLabel="Open activity history"
+              >
+                <View
+                  style={[
+                    styles.headerIconButton,
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.cardBorder,
+                    },
+                  ]}
+                >
+                  <Ionicons name="time-outline" size={18} color={colors.text} />
+                </View>
+              </Pressable>
+              <View
+                style={[
+                  styles.headerIconButton,
+                  {
+                    backgroundColor: colors.inputBg,
+                    borderColor: colors.cardBorder,
+                  },
+                ]}
+              >
+                <Ionicons name="expand-outline" size={20} color={colors.text} />
+              </View>
+            </View>
           </View>
 
           <Text style={[styles.trackerStatusText, { color: colors.textSecondary }]}>Status: {statusLabel}</Text>
@@ -826,10 +912,14 @@ export default function MapsScreen() {
                 onPress={goToActivityHistory}
                 style={({ pressed }) => [
                   styles.summaryPrimaryButton,
-                  { opacity: pressed ? 0.9 : 1 },
+                  {
+                    borderColor: colors.cardBorder,
+                    backgroundColor: colors.inputBg,
+                    opacity: pressed ? 0.9 : 1,
+                  },
                 ]}
               >
-                <Text style={styles.summaryPrimaryButtonText}>Go to Activity History</Text>
+                <Text style={[styles.summaryPrimaryButtonText, { color: colors.text }]}>Go to Activity History</Text>
               </Pressable>
             </View>
           </Animated.View>
@@ -848,21 +938,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  historyButton: {
+  trackerBanner: {
     position: 'absolute',
-    right: 12,
-    zIndex: 5,
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    left: 12,
+    right: 68,
+    borderRadius: 18,
     borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    zIndex: 4,
+  },
+  trackerBannerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 7,
+  },
+  trackerBannerContent: {
+    flex: 1,
+  },
+  trackerBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  trackerBannerBody: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 17,
   },
   bottomDock: {
     position: 'absolute',
@@ -882,10 +988,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  trackerHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerIconTouchTarget: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   trackerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  headerIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   trackerTitleText: {
     fontSize: 20,
@@ -1088,13 +1216,12 @@ const styles = StyleSheet.create({
     flex: 1.4,
     minHeight: 48,
     borderRadius: 14,
-    backgroundColor: '#16a34a',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
   summaryPrimaryButtonText: {
-    color: '#ffffff',
     fontSize: 14,
     fontWeight: '800',
     textAlign: 'center',
