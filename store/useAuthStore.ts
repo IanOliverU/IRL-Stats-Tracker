@@ -2,7 +2,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
 import { create } from 'zustand';
 
-import { supabase } from '@/lib/supabase';
+import { requireSupabase, supabaseConfig } from '@/lib/supabase';
 
 export type OAuthProvider = 'discord' | 'facebook' | 'github' | 'google' | 'twitter';
 
@@ -46,6 +46,7 @@ function getAuthState(session: Session | null): AuthState {
 }
 
 async function setSessionFromUrl(url: string): Promise<void> {
+  const supabase = requireSupabase();
   const hashIndex = url.indexOf('#');
   const queryIndex = url.indexOf('?');
   const hashParams = hashIndex >= 0 ? new URLSearchParams(url.slice(hashIndex + 1)) : null;
@@ -72,6 +73,7 @@ async function setSessionFromUrl(url: string): Promise<void> {
 }
 
 async function ensureProfile(user: User): Promise<void> {
+  const supabase = requireSupabase();
   const name = typeof user.user_metadata?.name === 'string' ? user.user_metadata.name : null;
   const { error } = await supabase.from('profiles').upsert(
     {
@@ -93,6 +95,14 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   user: null,
 
   initialize: async () => {
+    if (!supabaseConfig.isConfigured) {
+      console.warn(supabaseConfig.errorMessage);
+      set(getAuthState(null));
+      return;
+    }
+
+    const supabase = requireSupabase();
+
     if (!authSubscription) {
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
@@ -122,6 +132,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   },
 
   signInWithEmail: async ({ email, password }) => {
+    const supabase = requireSupabase();
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -139,6 +150,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   },
 
   signInWithProvider: async (provider) => {
+    const supabase = requireSupabase();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
@@ -156,6 +168,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   },
 
   signUpWithEmail: async ({ email, password, name }) => {
+    const supabase = requireSupabase();
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -180,6 +193,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   },
 
   signOut: async () => {
+    const supabase = requireSupabase();
     const { error } = await supabase.auth.signOut();
     if (error) {
       throw error;

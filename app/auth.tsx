@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getSupabaseNetworkErrorMessage } from '@/lib/supabase';
 import { useAuthStore, type OAuthProvider } from '@/store/useAuthStore';
 
 type AuthMode = 'signIn' | 'signUp';
@@ -124,7 +125,12 @@ export default function AuthScreen() {
         router.replace('/');
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Authentication failed.';
+      const message =
+        error instanceof Error && error.message === 'Network request failed'
+          ? getSupabaseNetworkErrorMessage()
+          : error instanceof Error
+            ? error.message
+            : 'Authentication failed.';
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
@@ -139,7 +145,12 @@ export default function AuthScreen() {
     try {
       await signInWithProvider(provider);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'SSO sign-in failed.';
+      const message =
+        error instanceof Error && error.message === 'Network request failed'
+          ? getSupabaseNetworkErrorMessage()
+          : error instanceof Error
+            ? error.message
+            : 'SSO sign-in failed.';
       setErrorMessage(message);
     } finally {
       setOauthLoadingProvider(null);

@@ -6,7 +6,7 @@ import {
   type WeatherSettings,
   type WeatherUnit,
 } from '@/lib/weather';
-import { supabase } from '@/lib/supabase';
+import { requireSupabase } from '@/lib/supabase';
 
 type SavedCityRow = {
   id: string;
@@ -74,6 +74,7 @@ function getFriendlyWeatherError(error: unknown): string {
 }
 
 async function listSavedCities(userId: string): Promise<SavedWeatherCity[]> {
+  const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('weather_saved_cities')
     .select('*')
@@ -89,6 +90,7 @@ async function listSavedCities(userId: string): Promise<SavedWeatherCity[]> {
 }
 
 async function getWeatherSettings(userId: string): Promise<WeatherSettingsRow | null> {
+  const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('weather_settings')
     .select('*')
@@ -103,6 +105,7 @@ async function getWeatherSettings(userId: string): Promise<WeatherSettingsRow | 
 }
 
 async function upsertWeatherSettings(userId: string, settings: WeatherSettings): Promise<WeatherSettings> {
+  const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('weather_settings')
     .upsert(
@@ -126,6 +129,7 @@ async function upsertWeatherSettings(userId: string, settings: WeatherSettings):
 }
 
 async function insertDefaultManila(userId: string): Promise<SavedWeatherCity> {
+  const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('weather_saved_cities')
     .insert({
@@ -183,6 +187,7 @@ async function ensureWeatherBootstrap(userId: string): Promise<{
 }
 
 async function fetchWeather(payload: WeatherFunctionPayload): Promise<WeatherResponse> {
+  const supabase = requireSupabase();
   const { data, error, response } = await supabase.functions.invoke<WeatherResponse>(WEATHER_FUNCTION_NAME, {
     body: {
       ...payload,
@@ -317,6 +322,7 @@ export async function addWeatherCity(userId: string, cityName: string): Promise<
   let selectedCityId = matchingCity?.id ?? null;
 
   if (!matchingCity) {
+    const supabase = requireSupabase();
     const { data, error } = await supabase
       .from('weather_saved_cities')
       .insert({
@@ -371,6 +377,7 @@ export async function setDefaultWeatherCity(userId: string, cityId: string): Pro
     throw new Error('Default city could not be found.');
   }
 
+  const supabase = requireSupabase();
   const resetResult = await supabase
     .from('weather_saved_cities')
     .update({ is_default: false })
@@ -411,6 +418,7 @@ export async function deleteWeatherCity(userId: string, cityId: string): Promise
     throw new Error('Default city cannot be removed.');
   }
 
+  const supabase = requireSupabase();
   const { error } = await supabase.from('weather_saved_cities').delete().eq('user_id', userId).eq('id', cityId);
 
   if (error) {

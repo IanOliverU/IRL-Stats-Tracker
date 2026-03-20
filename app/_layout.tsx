@@ -10,6 +10,7 @@ import 'react-native-reanimated';
 import { useGameStore } from '@/store/useGameStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useThemeStore } from '@/store/useThemeStore';
+import { supabaseConfig } from '@/lib/supabase';
 import { configureNotificationPresentationAsync, initializeNotificationsAsync } from '@/services/notificationService';
 
 export const unstable_settings = {
@@ -25,14 +26,22 @@ export default function RootLayout() {
   const hydrateTheme = useThemeStore((s) => s.hydrateTheme);
   const colors = useThemeStore((s) => s.theme.colors);
   const themeGroup = useThemeStore((s) => s.theme.group);
+  const supabaseConfigured = supabaseConfig.isConfigured;
 
   useEffect(() => {
-    void initializeAuth();
     hydrate();
     hydrateTheme();
-  }, [hydrate, hydrateTheme, initializeAuth]);
+
+    if (supabaseConfigured) {
+      void initializeAuth();
+    }
+  }, [hydrate, hydrateTheme, initializeAuth, supabaseConfigured]);
 
   useEffect(() => {
+    if (!supabaseConfigured) {
+      return;
+    }
+
     let active = true;
 
     async function handleInitialUrl() {
@@ -58,7 +67,7 @@ export default function RootLayout() {
       active = false;
       subscription.remove();
     };
-  }, [handleDeepLink]);
+  }, [handleDeepLink, supabaseConfigured]);
 
   useEffect(() => {
     StatusBar.setHidden(true, 'fade');
@@ -74,7 +83,46 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={themeGroup === 'dark' ? DarkTheme : DefaultTheme}>
-      {!authInitialized ? (
+      {!supabaseConfigured ? (
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 24,
+            backgroundColor: colors.background,
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: colors.cardBorder,
+              backgroundColor: colors.card,
+              padding: 20,
+            }}
+          >
+            <Text style={{ color: colors.text, fontSize: 24, fontWeight: '700' }}>
+              Build configuration missing
+            </Text>
+            <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 15, lineHeight: 22 }}>
+              This APK was built without the Supabase environment variables the app needs before it can show the
+              login screen.
+            </Text>
+            <Text style={{ marginTop: 16, color: colors.text, fontSize: 14, fontWeight: '600' }}>
+              Missing values
+            </Text>
+            <Text style={{ marginTop: 8, color: colors.textSecondary, fontSize: 14, lineHeight: 21 }}>
+              {supabaseConfig.missingEnvVars.join('\n')}
+            </Text>
+            <Text style={{ marginTop: 16, color: colors.textSecondary, fontSize: 14, lineHeight: 21 }}>
+              Add them to your EAS build environment, rebuild the APK, and reinstall it.
+            </Text>
+          </View>
+        </View>
+      ) : !authInitialized ? (
         <View
           style={{
             flex: 1,
