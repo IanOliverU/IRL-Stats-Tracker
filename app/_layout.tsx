@@ -6,6 +6,7 @@ import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform, StatusBar, Text, View } from 'react-native';
 import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useGameStore } from '@/store/useGameStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -82,72 +83,74 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ThemeProvider value={themeGroup === 'dark' ? DarkTheme : DefaultTheme}>
-      {!supabaseConfigured ? (
-        <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingHorizontal: 24,
-            backgroundColor: colors.background,
-          }}
-        >
+    <SafeAreaProvider>
+      <ThemeProvider value={themeGroup === 'dark' ? DarkTheme : DefaultTheme}>
+        {!supabaseConfigured ? (
           <View
             style={{
-              width: '100%',
-              maxWidth: 420,
-              borderRadius: 20,
-              borderWidth: 1,
-              borderColor: colors.cardBorder,
-              backgroundColor: colors.card,
-              padding: 20,
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 24,
+              backgroundColor: colors.background,
             }}
           >
-            <Text style={{ color: colors.text, fontSize: 24, fontWeight: '700' }}>
-              Build configuration missing
-            </Text>
-            <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 15, lineHeight: 22 }}>
-              This APK was built without the Supabase environment variables the app needs before it can show the
-              login screen.
-            </Text>
-            <Text style={{ marginTop: 16, color: colors.text, fontSize: 14, fontWeight: '600' }}>
-              Missing values
-            </Text>
-            <Text style={{ marginTop: 8, color: colors.textSecondary, fontSize: 14, lineHeight: 21 }}>
-              {supabaseConfig.missingEnvVars.join('\n')}
-            </Text>
-            <Text style={{ marginTop: 16, color: colors.textSecondary, fontSize: 14, lineHeight: 21 }}>
-              Add them to your EAS build environment, rebuild the APK, and reinstall it.
-            </Text>
+            <View
+              style={{
+                width: '100%',
+                maxWidth: 420,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: colors.cardBorder,
+                backgroundColor: colors.card,
+                padding: 20,
+              }}
+            >
+              <Text style={{ color: colors.text, fontSize: 24, fontWeight: '700' }}>
+                Build configuration missing
+              </Text>
+              <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 15, lineHeight: 22 }}>
+                This APK was built without the Supabase environment variables the app needs before it can show the
+                login screen.
+              </Text>
+              <Text style={{ marginTop: 16, color: colors.text, fontSize: 14, fontWeight: '600' }}>
+                Missing values
+              </Text>
+              <Text style={{ marginTop: 8, color: colors.textSecondary, fontSize: 14, lineHeight: 21 }}>
+                {supabaseConfig.missingEnvVars.join('\n')}
+              </Text>
+              <Text style={{ marginTop: 16, color: colors.textSecondary, fontSize: 14, lineHeight: 21 }}>
+                Add them to your EAS build environment, rebuild the APK, and reinstall it.
+              </Text>
+            </View>
           </View>
-        </View>
-      ) : !authInitialized ? (
-        <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: colors.background,
-          }}
-        >
-          <Text style={{ color: colors.textSecondary, fontSize: 16 }}>Connecting to your account...</Text>
-        </View>
-      ) : (
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Protected guard={!authUser}>
-            <Stack.Screen name="auth" />
-          </Stack.Protected>
-          <Stack.Protected guard={!!authUser}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen
-              name="quest/[questType]/[questId]"
-              options={{ headerShown: true, title: 'Quest Detail' }}
-            />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-          </Stack.Protected>
-        </Stack>
-      )}
-    </ThemeProvider>
+        ) : !authInitialized ? (
+          <View
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: colors.background,
+            }}
+          >
+            <Text style={{ color: colors.textSecondary, fontSize: 16 }}>Connecting to your account...</Text>
+          </View>
+        ) : (
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Protected guard={!authUser}>
+              <Stack.Screen name="auth" />
+            </Stack.Protected>
+            <Stack.Protected guard={!!authUser}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen
+                name="quest/[questType]/[questId]"
+                options={{ headerShown: true, title: 'Quest Detail' }}
+              />
+              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+            </Stack.Protected>
+          </Stack>
+        )}
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

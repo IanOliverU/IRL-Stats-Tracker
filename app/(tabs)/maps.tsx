@@ -24,8 +24,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { LatLng, Marker, Polyline, Region } from 'react-native-maps';
+import { Animated, Easing, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import MapView, { LatLng, Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type TrackingStatus = 'running' | 'paused' | 'stopped';
@@ -668,6 +668,7 @@ export default function MapsScreen() {
           ref={mapRef}
           style={StyleSheet.absoluteFill}
           initialRegion={initialRegion}
+          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
           showsUserLocation={locationPermission === Location.PermissionStatus.GRANTED}
         >
           {routeCoordinates.length > 1 && (

@@ -6,7 +6,7 @@ import {
   type WeatherSettings,
   type WeatherUnit,
 } from '@/lib/weather';
-import { requireSupabase } from '@/lib/supabase';
+import { getSupabaseNetworkErrorMessage, isSupabaseNetworkError, requireSupabase } from '@/lib/supabase';
 
 type SavedCityRow = {
   id: string;
@@ -60,6 +60,10 @@ function toWeatherSettings(row: WeatherSettingsRow | null, fallbackCityId: strin
 }
 
 function getFriendlyWeatherError(error: unknown): string {
+  if (isSupabaseNetworkError(error)) {
+    return getSupabaseNetworkErrorMessage();
+  }
+
   const message = error instanceof Error ? error.message : 'Unable to load weather right now.';
 
   if (message.includes('weather_saved_cities') || message.includes('weather_settings')) {
@@ -294,143 +298,187 @@ async function buildDashboardState(
 }
 
 export async function loadWeatherDashboard(userId: string): Promise<WeatherDashboardState> {
-  return buildDashboardState(userId);
+  try {
+    return await buildDashboardState(userId);
+  } catch (error) {
+    return {
+      cities: [],
+      settings: {
+        selectedCityId: null,
+        defaultCityId: null,
+        unit: 'C',
+      },
+      selectedCity: null,
+      weather: null,
+      errorMessage: getFriendlyWeatherError(error),
+    };
+  }
 }
 
 export async function refreshWeatherDashboard(userId: string): Promise<WeatherDashboardState> {
-  return buildDashboardState(userId);
+  try {
+    return await buildDashboardState(userId);
+  } catch (error) {
+    return {
+      cities: [],
+      settings: {
+        selectedCityId: null,
+        defaultCityId: null,
+        unit: 'C',
+      },
+      selectedCity: null,
+      weather: null,
+      errorMessage: getFriendlyWeatherError(error),
+    };
+  }
 }
 
 export async function addWeatherCity(userId: string, cityName: string): Promise<WeatherDashboardState> {
-  const trimmedCity = cityName.trim();
-  if (!trimmedCity) {
-    throw new Error('Enter a city name first.');
+  try {
+    const trimmedCity = cityName.trim();
+    if (!trimmedCity) {
+      throw new Error('Enter a city name first.');
+    }
+
+    const { cities, settings } = await ensureWeatherBootstrap(userId);
+    const weather = await fetchWeather({
+      city: trimmedCity,
+      unit: settings.unit,
+    });
+
+    const matchingCity =
+      cities.find((city) => weather.placeId && city.placeId === weather.placeId) ??
+      cities.find((city) => normalizeCityName(city.cityName) === normalizeCityName(weather.city));
+
+    const shouldSetDefault = !settings.defaultCityId;
+
+    let selectedCityId = matchingCity?.id ?? null;
+
+    if (!matchingCity) {
+      const supabase = requireSupabase();
+      const { data, error } = await supabase
+        .from('weather_saved_cities')
+        .insert({
+          user_id: userId,
+          city_name: weather.city,
+          place_id: weather.placeId,
+          latitude: weather.lat,
+          longitude: weather.lng,
+          is_default: shouldSetDefault,
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      selectedCityId = data.id as string;
+    }
+
+    await upsertWeatherSettings(userId, {
+      selectedCityId,
+      defaultCityId: shouldSetDefault ? selectedCityId : settings.defaultCityId,
+      unit: settings.unit,
+    });
+
+    return buildDashboardState(userId, { weatherOverride: weather });
+  } catch (error) {
+    throw new Error(getFriendlyWeatherError(error));
   }
+}
 
-  const { cities, settings } = await ensureWeatherBootstrap(userId);
-  const weather = await fetchWeather({
-    city: trimmedCity,
-    unit: settings.unit,
-  });
+export async function selectWeatherCity(userId: string, cityId: string): Promise<WeatherDashboardState> {
+  try {
+    const { cities, settings } = await ensureWeatherBootstrap(userId);
+    const city = cities.find((entry) => entry.id === cityId);
 
-  const matchingCity =
-    cities.find((city) => weather.placeId && city.placeId === weather.placeId) ??
-    cities.find((city) => normalizeCityName(city.cityName) === normalizeCityName(weather.city));
+    if (!city) {
+      throw new Error('Selected city could not be found.');
+    }
 
-  const shouldSetDefault = !settings.defaultCityId;
+    await upsertWeatherSettings(userId, {
+      ...settings,
+      selectedCityId: city.id,
+    });
 
-  let selectedCityId = matchingCity?.id ?? null;
+    const weather = await fetchWeatherForCity(city, settings.unit);
+    return buildDashboardState(userId, { weatherOverride: weather });
+  } catch (error) {
+    throw new Error(getFriendlyWeatherError(error));
+  }
+}
 
-  if (!matchingCity) {
+export async function setDefaultWeatherCity(userId: string, cityId: string): Promise<WeatherDashboardState> {
+  try {
+    const { cities, settings } = await ensureWeatherBootstrap(userId);
+    const city = cities.find((entry) => entry.id === cityId);
+
+    if (!city) {
+      throw new Error('Default city could not be found.');
+    }
+
     const supabase = requireSupabase();
-    const { data, error } = await supabase
+    const resetResult = await supabase
       .from('weather_saved_cities')
-      .insert({
-        user_id: userId,
-        city_name: weather.city,
-        place_id: weather.placeId,
-        latitude: weather.lat,
-        longitude: weather.lng,
-        is_default: shouldSetDefault,
-      })
-      .select('id')
-      .single();
+      .update({ is_default: false })
+      .eq('user_id', userId);
+
+    if (resetResult.error) {
+      throw resetResult.error;
+    }
+
+    const selectResult = await supabase
+      .from('weather_saved_cities')
+      .update({ is_default: true })
+      .eq('user_id', userId)
+      .eq('id', cityId);
+
+    if (selectResult.error) {
+      throw selectResult.error;
+    }
+
+    await upsertWeatherSettings(userId, {
+      ...settings,
+      selectedCityId: settings.selectedCityId ?? cityId,
+      defaultCityId: cityId,
+    });
+
+    return buildDashboardState(userId);
+  } catch (error) {
+    throw new Error(getFriendlyWeatherError(error));
+  }
+}
+
+export async function deleteWeatherCity(userId: string, cityId: string): Promise<WeatherDashboardState> {
+  try {
+    const { cities, settings } = await ensureWeatherBootstrap(userId);
+    const city = cities.find((entry) => entry.id === cityId);
+
+    if (!city) {
+      throw new Error('City could not be found.');
+    }
+
+    if (city.isDefault || settings.defaultCityId === cityId) {
+      throw new Error('Default city cannot be removed.');
+    }
+
+    const supabase = requireSupabase();
+    const { error } = await supabase.from('weather_saved_cities').delete().eq('user_id', userId).eq('id', cityId);
 
     if (error) {
       throw error;
     }
 
-    selectedCityId = data.id as string;
+    const nextSelectedCityId = settings.selectedCityId === cityId ? settings.defaultCityId : settings.selectedCityId;
+
+    await upsertWeatherSettings(userId, {
+      ...settings,
+      selectedCityId: nextSelectedCityId,
+    });
+
+    return buildDashboardState(userId);
+  } catch (error) {
+    throw new Error(getFriendlyWeatherError(error));
   }
-
-  await upsertWeatherSettings(userId, {
-    selectedCityId,
-    defaultCityId: shouldSetDefault ? selectedCityId : settings.defaultCityId,
-    unit: settings.unit,
-  });
-
-  return buildDashboardState(userId, { weatherOverride: weather });
-}
-
-export async function selectWeatherCity(userId: string, cityId: string): Promise<WeatherDashboardState> {
-  const { cities, settings } = await ensureWeatherBootstrap(userId);
-  const city = cities.find((entry) => entry.id === cityId);
-
-  if (!city) {
-    throw new Error('Selected city could not be found.');
-  }
-
-  await upsertWeatherSettings(userId, {
-    ...settings,
-    selectedCityId: city.id,
-  });
-
-  const weather = await fetchWeatherForCity(city, settings.unit);
-  return buildDashboardState(userId, { weatherOverride: weather });
-}
-
-export async function setDefaultWeatherCity(userId: string, cityId: string): Promise<WeatherDashboardState> {
-  const { cities, settings } = await ensureWeatherBootstrap(userId);
-  const city = cities.find((entry) => entry.id === cityId);
-
-  if (!city) {
-    throw new Error('Default city could not be found.');
-  }
-
-  const supabase = requireSupabase();
-  const resetResult = await supabase
-    .from('weather_saved_cities')
-    .update({ is_default: false })
-    .eq('user_id', userId);
-
-  if (resetResult.error) {
-    throw resetResult.error;
-  }
-
-  const selectResult = await supabase
-    .from('weather_saved_cities')
-    .update({ is_default: true })
-    .eq('user_id', userId)
-    .eq('id', cityId);
-
-  if (selectResult.error) {
-    throw selectResult.error;
-  }
-
-  await upsertWeatherSettings(userId, {
-    ...settings,
-    selectedCityId: settings.selectedCityId ?? cityId,
-    defaultCityId: cityId,
-  });
-
-  return buildDashboardState(userId);
-}
-
-export async function deleteWeatherCity(userId: string, cityId: string): Promise<WeatherDashboardState> {
-  const { cities, settings } = await ensureWeatherBootstrap(userId);
-  const city = cities.find((entry) => entry.id === cityId);
-
-  if (!city) {
-    throw new Error('City could not be found.');
-  }
-
-  if (city.isDefault || settings.defaultCityId === cityId) {
-    throw new Error('Default city cannot be removed.');
-  }
-
-  const supabase = requireSupabase();
-  const { error } = await supabase.from('weather_saved_cities').delete().eq('user_id', userId).eq('id', cityId);
-
-  if (error) {
-    throw error;
-  }
-
-  const nextSelectedCityId = settings.selectedCityId === cityId ? settings.defaultCityId : settings.selectedCityId;
-
-  await upsertWeatherSettings(userId, {
-    ...settings,
-    selectedCityId: nextSelectedCityId,
-  });
-
-  return buildDashboardState(userId);
 }

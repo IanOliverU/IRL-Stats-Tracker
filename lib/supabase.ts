@@ -17,6 +17,23 @@ const supabaseConfigErrorMessage =
 
 let supabaseClient: SupabaseClient | null = null;
 
+function createSupabaseFetch(): typeof fetch {
+  return async (input, init) => {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      const message = getSupabaseNetworkErrorMessage();
+
+      return new Response(JSON.stringify({ message }), {
+        status: 522,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    }
+  };
+}
+
 if (!supabaseConfigErrorMessage) {
   const resolvedSupabaseUrl = supabaseUrl;
   const resolvedSupabasePublishableKey = supabasePublishableKey;
@@ -28,6 +45,9 @@ if (!supabaseConfigErrorMessage) {
       persistSession: true,
       detectSessionInUrl: false,
     },
+    global: {
+      fetch: createSupabaseFetch(),
+    },
   });
 }
 
@@ -36,6 +56,14 @@ export const supabaseConfig = {
   errorMessage: supabaseConfigErrorMessage,
   missingEnvVars: missingSupabaseEnvVars,
 } as const;
+
+export function isSupabaseNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message === 'Network request failed' || error.message === 'Failed to fetch';
+}
 
 function getSupabaseHost(): string | null {
   if (!supabaseUrl) {
@@ -53,10 +81,10 @@ export function getSupabaseNetworkErrorMessage(): string {
   const host = getSupabaseHost();
 
   if (host) {
-    return `Couldn't reach Supabase at ${host}. Check that EXPO_PUBLIC_SUPABASE_URL is your project API URL, then rebuild the app.`;
+    return `Couldn't reach Supabase at ${host}. The project URL may be mistyped, deleted, or not reachable from this device. Check EXPO_PUBLIC_SUPABASE_URL, then restart the app.`;
   }
 
-  return "Couldn't reach Supabase. Check that EXPO_PUBLIC_SUPABASE_URL is valid, then rebuild the app.";
+  return "Couldn't reach Supabase. Check that EXPO_PUBLIC_SUPABASE_URL is valid, then restart the app.";
 }
 
 export function requireSupabase(): SupabaseClient {

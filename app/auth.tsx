@@ -11,9 +11,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getSupabaseNetworkErrorMessage } from '@/lib/supabase';
+import { getSupabaseNetworkErrorMessage, isSupabaseNetworkError } from '@/lib/supabase';
 import { useAuthStore, type OAuthProvider } from '@/store/useAuthStore';
 
 type AuthMode = 'signIn' | 'signUp';
@@ -52,9 +52,11 @@ const OAUTH_PROVIDERS: readonly {
 export default function AuthScreen() {
   const router = useRouter();
   const authUser = useAuthStore((s) => s.user);
+  const initializationError = useAuthStore((s) => s.initializationError);
   const signInWithEmail = useAuthStore((s) => s.signInWithEmail);
   const signInWithProvider = useAuthStore((s) => s.signInWithProvider);
   const signUpWithEmail = useAuthStore((s) => s.signUpWithEmail);
+  const insets = useSafeAreaInsets();
 
   const [mode, setMode] = useState<AuthMode>('signIn');
   const [showSsoProviders, setShowSsoProviders] = useState(false);
@@ -125,12 +127,11 @@ export default function AuthScreen() {
         router.replace('/');
       }
     } catch (error) {
-      const message =
-        error instanceof Error && error.message === 'Network request failed'
-          ? getSupabaseNetworkErrorMessage()
-          : error instanceof Error
-            ? error.message
-            : 'Authentication failed.';
+      const message = isSupabaseNetworkError(error)
+        ? getSupabaseNetworkErrorMessage()
+        : error instanceof Error
+          ? error.message
+          : 'Authentication failed.';
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
@@ -145,12 +146,11 @@ export default function AuthScreen() {
     try {
       await signInWithProvider(provider);
     } catch (error) {
-      const message =
-        error instanceof Error && error.message === 'Network request failed'
-          ? getSupabaseNetworkErrorMessage()
-          : error instanceof Error
-            ? error.message
-            : 'SSO sign-in failed.';
+      const message = isSupabaseNetworkError(error)
+        ? getSupabaseNetworkErrorMessage()
+        : error instanceof Error
+          ? error.message
+          : 'SSO sign-in failed.';
       setErrorMessage(message);
     } finally {
       setOauthLoadingProvider(null);
@@ -158,7 +158,14 @@ export default function AuthScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: AUTH_COLORS.background }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: AUTH_COLORS.background,
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+      }}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -520,6 +527,23 @@ export default function AuthScreen() {
               </View>
             ) : null}
 
+            {!errorMessage && initializationError ? (
+              <View
+                style={{
+                  marginTop: 18,
+                  borderRadius: 12,
+                  backgroundColor: AUTH_COLORS.errorBg,
+                  borderWidth: 1,
+                  borderColor: AUTH_COLORS.errorBorder,
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: AUTH_COLORS.errorText, fontSize: 13, lineHeight: 19 }}>
+                  {initializationError}
+                </Text>
+              </View>
+            ) : null}
+
             {infoMessage ? (
               <View
                 style={{
@@ -598,6 +622,6 @@ export default function AuthScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }

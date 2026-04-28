@@ -2,7 +2,12 @@ import type { Session, User } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
 import { create } from 'zustand';
 
-import { requireSupabase, supabaseConfig } from '@/lib/supabase';
+import {
+  getSupabaseNetworkErrorMessage,
+  isSupabaseNetworkError,
+  requireSupabase,
+  supabaseConfig,
+} from '@/lib/supabase';
 
 export type OAuthProvider = 'discord' | 'facebook' | 'github' | 'google' | 'twitter';
 
@@ -23,6 +28,7 @@ interface AuthState {
   initialized: boolean;
   session: Session | null;
   user: User | null;
+  initializationError: string | null;
 }
 
 interface AuthActions {
@@ -42,6 +48,7 @@ function getAuthState(session: Session | null): AuthState {
     initialized: true,
     session,
     user: session?.user ?? null,
+    initializationError: null,
   };
 }
 
@@ -73,19 +80,25 @@ async function setSessionFromUrl(url: string): Promise<void> {
 }
 
 async function ensureProfile(user: User): Promise<void> {
-  const supabase = requireSupabase();
-  const name = typeof user.user_metadata?.name === 'string' ? user.user_metadata.name : null;
-  const { error } = await supabase.from('profiles').upsert(
-    {
-      id: user.id,
-      name,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'id' }
-  );
+  try {
+    const supabase = requireSupabase();
+    const name = typeof user.user_metadata?.name === 'string' ? user.user_metadata.name : null;
+    const { error } = await supabase.from('profiles').upsert(
+      {
+        id: user.id,
+        name,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
 
-  if (error) {
-    console.warn('Failed to upsert Supabase profile', error);
+    if (error && !isSupabaseNetworkError(error)) {
+      console.warn('Failed to upsert Supabase profile', error);
+    }
+  } catch (error) {
+    if (!isSupabaseNetworkError(error)) {
+      console.warn('Failed to upsert Supabase profile', error);
+    }
   }
 }
 
@@ -93,37 +106,54 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   initialized: false,
   session: null,
   user: null,
+  initializationError: null,
 
   initialize: async () => {
     if (!supabaseConfig.isConfigured) {
       console.warn(supabaseConfig.errorMessage);
-      set(getAuthState(null));
+      set({
+        ...getAuthState(null),
+        initializationError: supabaseConfig.errorMessage,
+      });
       return;
     }
 
-    const supabase = requireSupabase();
+    try {
+      const supabase = requireSupabase();
 
-    if (!authSubscription) {
-      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-        if (session?.user) {
-          void ensureProfile(session.user);
-        }
+      if (!authSubscription) {
+        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+          if (session?.user) {
+            void ensureProfile(session.user);
+          }
 
-        set(getAuthState(session));
+          set(getAuthState(session));
+        });
+
+        authSubscription = data.subscription;
+      }
+
+      const { data, error } = await supabase.auth.getSession();
+      if (error && !isSupabaseNetworkError(error)) {
+        console.warn('Failed to load Supabase session', error);
+      }
+
+      set(getAuthState(data.session));
+
+      if (data.session?.user) {
+        await ensureProfile(data.session.user);
+      }
+    } catch (error) {
+      const initializationError = isSupabaseNetworkError(error)
+        ? getSupabaseNetworkErrorMessage()
+        : error instanceof Error
+          ? error.message
+          : 'Unable to connect to Supabase right now.';
+
+      set({
+        ...getAuthState(null),
+        initializationError,
       });
-
-      authSubscription = data.subscription;
-    }
-
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      console.warn('Failed to load Supabase session', error);
-    }
-
-    set(getAuthState(data.session));
-
-    if (data.session?.user) {
-      await ensureProfile(data.session.user);
     }
   },
 

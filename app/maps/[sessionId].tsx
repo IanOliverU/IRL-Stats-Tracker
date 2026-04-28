@@ -13,8 +13,8 @@ import { useAppColors } from '@/store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
 export default function MapSessionDetailScreen() {
   const colors = useAppColors();
@@ -86,6 +86,7 @@ export default function MapSessionDetailScreen() {
             <MapView
               style={StyleSheet.absoluteFill}
               initialRegion={routeRegion}
+              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
               scrollEnabled={false}
               zoomEnabled={false}
               pitchEnabled={false}
